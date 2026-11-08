@@ -15,6 +15,8 @@
 ## 核心功能
 
 - 账号注册/登录（JWT，默认管理员 `admin / admin123`），以及微信小程序 openid 静默登录：进入小程序即自动建号/登录，令牌失效自动重登
+- **Web 先浏览、后登录**：游客可完整查看失物/拾物清单、详情、筛选、搜索、排序与距离；发布、关注、评论与认领会原地弹出登录引导，个人中心显示空态；本地登录态过期只静默清除，不打断浏览
+- **微信扫码登录（与小程序同一身份）**：Web 展示小程序码，微信扫码后在小程序「确认登录网页」页点一次确认；后端把票据绑定到当前小程序 `openid` 对应的 `user.id` 并签发同一套 JWT，两端共享发布、关注、消息与认领记录。票据仅存服务内存（默认 5 分钟、一次性消费），不落库
 - 小程序启动自动定位（`getLocation`），地图以当前位置为中心；拒绝授权时回退默认城市并自动切为时间排序
 - Web 列表（`/lost`、`/found`）默认按距离近→远排序，可切换「最新发布 / 最多浏览」；浏览器定位（WGS84→GCJ02）在 HTTPS 或 localhost 下可用，拒绝授权时回退默认城市并自动切为时间排序，卡片显示距离
 - 首页失物/拾物列表默认按距离近→远排序，可切换为按发布时间近→远，卡片显示距离
@@ -74,6 +76,8 @@ npm run dev
 已预置旧系统的高德 Key（`.env` 中 `VITE_AMAP_KEY`，沿用原 `gaodeMap.js` 的 Key，JS API 2.0 验证可用）；uni-app H5 端 Key 已配置在 `manifest.json → h5.sdkConfigs.maps.amap`。
 
 本地调试选点：Web 弹层复用 `src/components/MapPicker.vue`，未配置 `VITE_AMAP_KEY` 时降级为 GCJ02 经纬度输入（经度 -180~180、纬度 -90~90，不做二次坐标换算）。浏览器定位仅在 HTTPS 或 `localhost` 下可用；手动位置不写入 `localStorage`，刷新即恢复自动定位，可用 `sort=distance&userLat=..&userLng=..` 对比不同坐标验证排序与 `distance` 变化。小程序端使用微信原生 `uni.chooseLocation`，需在微信开发者工具或真机中验证。
+
+本地调试扫码登录：后端需配置 `WX_SECRET`（用于 `cgi-bin/token` 换取 `access_token`）；未配置时 Web 弹层会显示「生成小程序码失败」并保留账号密码登录。开发阶段小程序码默认指向体验版（`lostfound.qr-login.env-version=trial`、`check-path=false`），需先用微信开发者工具把包含 `pages/web-login/web-login` 的版本上传为体验版。票据只保存在后端进程内存，重启后端后旧二维码立即失效；Web 与小程序必须指向同一个后端实例，否则状态轮询与确认不在同一票据缓存上。
 
 ### 3. 微信小程序（HBuilderX）
 

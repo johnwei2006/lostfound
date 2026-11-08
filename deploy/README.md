@@ -119,6 +119,23 @@ node remote-deploy.js web       # 上传 Web dist + Nginx 配置，reload，HTTP
 5. 按合规要求补齐用户协议、用户输入内容安全检测；提交审核时提供测试账号，并在审核备注中说明「进入即静默登录、定位与地图选点仅用于查看指定地点附近的失物招领物品，位置不持久化」。
 6. **提交审核只能在公众平台网页操作**：微信开发者工具 CLI 仅提供 `preview` / `auto-preview` / `upload` / `cloud`，没有提交审核命令；`wxa/submit_audit` 只开放给第三方平台，本小程序不适用。路径：`微信公众平台 → 版本管理 → 开发版本 → 1.2.0 → 提交审核`。若 **1.1.0** 仍在审核中，需先撤回再提交 1.2.0。审核备注建议填写「进入即静默登录；定位与地图选点仅用于查看指定地点附近的失物招领物品，位置不持久化」，并按要求提供测试账号与类目。
 
+## Web 匿名浏览与微信扫码登录（发布前逐项确认）
+
+- 后端新增 `POST /api/auth/qr/ticket`（匿名）、`GET /api/auth/qr/status`（匿名）、`POST /api/auth/qr/confirm`（`@RequireLogin`）；票据存 Caffeine 内存，不落库、不写表，服务重启即清空。列表/详情/筛选等 GET 接口仍匿名放行，写操作仍需登录。
+- 微信接口：`cgi-bin/token` 复用 `WX_APPID` / `WX_SECRET`，`access_token` 缓存至到期前 5 分钟，避免每次生成二维码都换 token 触发限流；`wxa/getwxacodeunlimit` 的 `scene` 为 32 位随机十六进制串（上限 32 可见字符），`page=pages/web-login/web-login`，`width=280`。创建票据按 IP 频控，默认 10 次/分钟。
+- **发布顺序（关键）**：小程序码的 `page` 必须是目标版本里已存在的页面。当前 `lostfound.qr-login.env-version` 默认 `trial`、`check-path=false`，便于体验版验证；待包含 `pages/web-login/web-login` 的**新版本发布后**，在生产环境把 `WX_QR_ENV_VERSION=release`、`WX_QR_CHECK_PATH=true` 注入 `/etc/lostfound/lostfound.env` 并重启服务，否则正式版扫码打不开该页。相关参数均可用环境变量覆盖，无需改代码。
+- 多实例部署注意：`access_token` 与登录票据都是单机内存态；多实例需换成共享缓存/Redis，否则新实例取 token 会顶掉旧实例凭证，且票据不共享。
+
+- [ ] Web：未登录可访问 `/`、`/lost`、`/found` 与详情，筛选/搜索/分页/排序/距离均正常，不跳登录页
+- [ ] Web：游客点「发布」及详情页关注/评论只弹扫码框、不发写请求，关闭后停留在原页
+- [ ] Web：`/profile` 可进入，头像/昵称为空、各列表为空并附扫码与账号登录入口；登录态过期不再整页跳转
+- [ ] Web：扫码弹层显示二维码与倒计时，过期可刷新，生成失败时仍可切到账号密码登录
+- [ ] 小程序：`pages/web-login/web-login` 已随新版本构建上传并发布；体验版可先用 `env_version=trial` 走通
+- [ ] 同一身份：确认后 Web 拿到的是小程序当前 `openid` 对应的 `user.id`，两端发布/关注/消息/认领一致
+- [ ] 合规：隐私保护指引涵盖「账号/用户标识」；审核备注注明「游客可直接浏览清单；扫码登录仅用于发布与管理个人信息，需用户在小程序内主动确认」
+
+**回滚**：Web 与小程序分别回退上一版产物即可，后端接口为新增且无数据库变更。若要临时关闭扫码登录，可把 `WX_QR_ENV_VERSION` 指向不存在的版本或直接注释 `qr-login` 配置后重启，账号密码登录不受影响。
+
 ## 地图选点功能验收（发布前逐项确认）
 
 本功能只改前端：后端接口、数据库、管理后台零改动；手动位置仅存于会话内存，不写 storage、不写库。
