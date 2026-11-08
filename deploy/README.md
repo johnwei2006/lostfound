@@ -92,6 +92,8 @@ node remote-deploy.js web       # 上传 Web dist + Nginx 配置，reload，HTTP
 - [x] 外网 `/`、`/admin` → 200，SPA 回退正常；HTTP → 301 HTTPS
 - [x] 小程序 1.0.2 已构建并上传（线上域名 + `urlCheck: true`）
 - [x] 小程序 1.1.0 已上传（`cli upload -v 1.1.0`，172.1 KB），待在公众平台提交审核并发布
+- [x] 小程序 1.2.0（地图选点 / 会话级位置覆盖）已上传（`cli upload -v 1.2.0`，178.2 KB），待在公众平台提交审核并发布
+- [x] Web 地图选点版本已部署（`node deploy/remote-deploy.js web`）：线上入口 `Cache-Control: no-cache, must-revalidate`，`LocationSwitch` 产物 200，`/lost`、`/found`、`/admin`、`/map` SPA 回退均 200，`sort=distance` 两组坐标（武汉 3.61km / 北京 0.16km）排序与距离联动正常
 - [x] 小程序 1.1.0：启动静默登录、启动定位、首页距离/时间排序、卡片距离展示、地图定位到当前位置
 - [x] 线上 `sort=distance` 返回 `total=241` 且距离递增（3.61km → 32.68km → 85.16km…），`sort=time` 按发布时间递减，无坐标自动回退时间排序
 - [x] 后端 `GET /api/lost/page?sort=distance&userLat=30.593&userLng=114.305` → 距离递增且 `distance` 字段正确；`sort=time` → 发布时间递减；`/latest`、`/map`、`mine` 保持原排序
@@ -112,10 +114,22 @@ node remote-deploy.js web       # 上传 Web dist + Nginx 配置，reload，HTTP
    已尝试用小程序 `wxa/modify_domain` 接口自动配置，`access_token` 有效但接口已不可用（40014/40066），必须在公众平台手动设置。
    历史微信头像已升级为 HTTPS，但域名为 `wx.qlogo.cn` / `thirdwx.qlogo.cn`，如需在小程序内显示头像，还需把这两个域名加入 `downloadFile` 合法域名（或后续改为本地缓存头像）。
 2. 确认域名已完成 **ICP 备案**（小程序合法域名强制要求）。
-3. **地理位置接口**：`开发管理 → 接口设置` 中确认 `getLocation` 已申请并开通（`requiredPrivateInfos` 已在 `manifest.json` 声明，`permission.scope.userLocation.desc` 写明用于距离排序与地图定位）。注意该 `desc` 上限为 **30 字**，超长会在上传时被微信以 `80058` 拒绝；当前使用「用于展示附近失物招领记录及地图定位」（17 字）。
-4. **用户隐私保护指引**：在公众平台配置隐私协议并勾选「地理位置」；1.1.0 的 `utils/location.js` 已兼容 `getPrivacySetting` / `requirePrivacyAuthorize`，用户未同意或接口不可用时自动回退默认城市 + 时间排序，不会阻塞首屏。若后台开启 `__usePrivacyCheck__`，需在 `manifest.json` 的 `mp-weixin` 节点补充该配置后再构建上传。
-5. 按合规要求补齐用户协议、用户输入内容安全检测；提交审核时提供测试账号，并在审核备注中说明「进入即静默登录、定位用于附近物品排序」。
-6. 版本管理中将 **1.1.0** 开发版提交审核并发布（此前 1.0.2 为上一版本）。
+3. **地理位置接口**：`开发管理 → 接口设置` 中确认 `getLocation` **与 `chooseLocation` 均已申请并开通**——新增的地图选点调用微信原生 `uni.chooseLocation`，与 `getLocation` 分别申请，缺一会导致选点失败（页面已给出「选点失败，请重试」提示并保留原位置）。`requiredPrivateInfos` 已在两个工程的 `manifest.json` 同时声明 `["chooseLocation", "getLocation"]`。注意 `permission.scope.userLocation.desc` 上限为 **30 字**，超长会在上传时被微信以 `80058` 拒绝；当前使用「用于展示附近失物招领记录及地图定位」（17 字），涵盖展示附近记录与地图定位/选点用途，无需改动。
+4. **用户隐私保护指引**：在公众平台配置隐私协议并勾选「地理位置」；`utils/location.js` 已导出 `ensurePrivacyAuthorize()`，自动定位与 `chooseLocation` 调用前均复用它，用户未同意或接口不可用时自动回退默认城市 + 时间排序，不会阻塞首屏，也不会改动既有位置；选点被用户主动取消同样不改动位置。若后台开启 `__usePrivacyCheck__`，需在 `manifest.json` 的 `mp-weixin` 节点补充该配置后再构建上传。`chooseLocation` 是微信原生页面，不额外引入需要备案的业务域名。
+5. 按合规要求补齐用户协议、用户输入内容安全检测；提交审核时提供测试账号，并在审核备注中说明「进入即静默登录、定位与地图选点仅用于查看指定地点附近的失物招领物品，位置不持久化」。
+6. **提交审核只能在公众平台网页操作**：微信开发者工具 CLI 仅提供 `preview` / `auto-preview` / `upload` / `cloud`，没有提交审核命令；`wxa/submit_audit` 只开放给第三方平台，本小程序不适用。路径：`微信公众平台 → 版本管理 → 开发版本 → 1.2.0 → 提交审核`。若 **1.1.0** 仍在审核中，需先撤回再提交 1.2.0。审核备注建议填写「进入即静默登录；定位与地图选点仅用于查看指定地点附近的失物招领物品，位置不持久化」，并按要求提供测试账号与类目。
+
+## 地图选点功能验收（发布前逐项确认）
+
+本功能只改前端：后端接口、数据库、管理后台零改动；手动位置仅存于会话内存，不写 storage、不写库。
+
+- [ ] 小程序：冷启动默认自动定位；首页位置条显示「自动定位」，列表按距离由近到远
+- [ ] 小程序：点「地图选点」→ 微信原生选点页 → 确认后位置条变「手动选点」，列表重置分页并按新坐标重排、卡片距离刷新；取消选点位置不变
+- [ ] 小程序：点「恢复当前位置」回到自动定位；冷启动后不再保留上次选点，地图页中心同步
+- [ ] Web：首页 `/` 与 `/lost`、`/found` 均有位置条；选点确认后列表与卡片距离按新坐标更新，首页版块仍按最新展示
+- [ ] Web：无 `VITE_AMAP_KEY` 时弹层降级为 GCJ02 经纬度输入，越界坐标被拒绝且位置不变；刷新页面后手动位置清空
+- [ ] 两端：拒绝定位 / 未授权时回退默认城市 + 时间排序；手动选点后解除「未定位不可按距离排序」限制；用户主动改过排序时尊重其选择
+- [ ] 真机：公众平台已开通 `chooseLocation`、隐私协议已勾选「地理位置」，否则按上方第 3 / 4 项处理
 
 ## 运维与回滚
 
@@ -142,6 +156,8 @@ nginx -t && systemctl reload nginx
 ```
 
 **回滚全程不触碰数据库**：不执行 `DROP`/`TRUNCATE`/`schema.sql`，`legacy_*` 表与新表数据均保留。
+
+**地图选点功能回滚**：仅涉及前端的会话级位置覆盖，不写库、不改 jar 接口。小程序在公众平台回退上一版本即可；Web 重新部署上一版 `lostfound-web/dist`（`node deploy/remote-deploy.js web`）即可，无需回滚 jar，也无需清理任何数据。
 
 ## 已知限制与建议
 

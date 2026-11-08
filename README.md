@@ -18,6 +18,7 @@
 - 小程序启动自动定位（`getLocation`），地图以当前位置为中心；拒绝授权时回退默认城市并自动切为时间排序
 - Web 列表（`/lost`、`/found`）默认按距离近→远排序，可切换「最新发布 / 最多浏览」；浏览器定位（WGS84→GCJ02）在 HTTPS 或 localhost 下可用，拒绝授权时回退默认城市并自动切为时间排序，卡片显示距离
 - 首页失物/拾物列表默认按距离近→远排序，可切换为按发布时间近→远，卡片显示距离
+- **地图选点切换当前位置**：小程序首页、Web 首页 `/` 与列表页 `/lost`、`/found` 都可发起选点；选点后列表按新坐标重新按距离排序、卡片距离同步刷新。所选位置仅存于本次会话（模块内存，不写入 storage），小程序冷启动 / Web 刷新后自动恢复定位，任何时刻都可点「恢复当前位置」。Web 首页版块仍按最新展示，位置在全局生效
 - 失物/拾物发布、浏览、关键词/类别/状态/时间筛选、分页
 - 认领流转：提交申请（凭证描述）→ 发布者审核 → 物品状态流转（待认领/待确认/已完成/已下架）
 - 招领站：列表/详情/站内物品托管，管理员管理站点
@@ -71,6 +72,8 @@ npm run dev
 
 可选：复制 `.env.example` 为 `.env` 并填入 `VITE_AMAP_KEY`（高德 Web 端 Key）启用地图。
 已预置旧系统的高德 Key（`.env` 中 `VITE_AMAP_KEY`，沿用原 `gaodeMap.js` 的 Key，JS API 2.0 验证可用）；uni-app H5 端 Key 已配置在 `manifest.json → h5.sdkConfigs.maps.amap`。
+
+本地调试选点：Web 弹层复用 `src/components/MapPicker.vue`，未配置 `VITE_AMAP_KEY` 时降级为 GCJ02 经纬度输入（经度 -180~180、纬度 -90~90，不做二次坐标换算）。浏览器定位仅在 HTTPS 或 `localhost` 下可用；手动位置不写入 `localStorage`，刷新即恢复自动定位，可用 `sort=distance&userLat=..&userLng=..` 对比不同坐标验证排序与 `distance` 变化。小程序端使用微信原生 `uni.chooseLocation`，需在微信开发者工具或真机中验证。
 
 ### 3. 微信小程序（HBuilderX）
 
