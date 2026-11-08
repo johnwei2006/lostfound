@@ -53,29 +53,93 @@ public class ItemService {
 
     public PageResult<ItemVO> page(String type, ItemQuery q, Long currentUserId) {
         q.setCurrentUserId(currentUserId);
-        PageResult<ItemVO> result;
+        // 只有显式请求 distance 且坐标合法时才按距离排序；
+        // 其余调用（/latest、/map、我的发布、管理后台、Web）保持原有时间/热度排序不变。
+        boolean distanceSort = "distance".equalsIgnoreCase(q.getSort()) && q.hasValidCoordinates();
+        PageResult<ItemVO> result = new PageResult<>();
         if ("FOUND".equals(type)) {
             QueryWrapper<Found> qw = buildQuery(q, reviewRequired);
-            qw.orderByDesc("hot".equals(q.getSort()) ? "view_count" : "create_time");
-            Page<Found> page = foundMapper.selectPage(new Page<>(q.getPage(), q.getSize()), qw);
-            result = new PageResult<>();
-            result.setTotal(page.getTotal());
-            result.setPages(page.getPages());
-            result.setCurrent(page.getCurrent());
-            result.setSize(page.getSize());
-            result.setRecords(convertFound(page.getRecords(), currentUserId));
+            List<Found> records;
+            long total;
+            long pages;
+            if (distanceSort) {
+                // .last() 是裸 SQL，会被带入自动生成的 count 语句，故关闭自动 count 后单独统计
+                qw.last(distanceOrderBy(q));
+                records = foundMapper.selectPage(new Page<>(q.getPage(), q.getSize(), false), qw).getRecords();
+                total = foundMapper.selectCount(buildQuery(q, reviewRequired));
+                pages = (total + q.getSize() - 1) / q.getSize();
+            } else {
+                applyDefaultOrder(qw, q.getSort());
+                Page<Found> p = foundMapper.selectPage(new Page<>(q.getPage(), q.getSize()), qw);
+                records = p.getRecords();
+                total = p.getTotal();
+                pages = p.getPages();
+            }
+            result.setTotal(total);
+            result.setPages(pages);
+            result.setCurrent(q.getPage());
+            result.setSize(q.getSize());
+            result.setRecords(convertFound(records, currentUserId));
         } else {
             QueryWrapper<Lost> qw = buildQuery(q, reviewRequired);
-            qw.orderByDesc("hot".equals(q.getSort()) ? "view_count" : "create_time");
-            Page<Lost> page = lostMapper.selectPage(new Page<>(q.getPage(), q.getSize()), qw);
-            result = new PageResult<>();
-            result.setTotal(page.getTotal());
-            result.setPages(page.getPages());
-            result.setCurrent(page.getCurrent());
-            result.setSize(page.getSize());
-            result.setRecords(convertLost(page.getRecords(), currentUserId));
+            List<Lost> records;
+            long total;
+            long pages;
+            if (distanceSort) {
+                qw.last(distanceOrderBy(q));
+                records = lostMapper.selectPage(new Page<>(q.getPage(), q.getSize(), false), qw).getRecords();
+                total = lostMapper.selectCount(buildQuery(q, reviewRequired));
+                pages = (total + q.getSize() - 1) / q.getSize();
+            } else {
+                applyDefaultOrder(qw, q.getSort());
+                Page<Lost> p = lostMapper.selectPage(new Page<>(q.getPage(), q.getSize()), qw);
+                records = p.getRecords();
+                total = p.getTotal();
+                pages = p.getPages();
+            }
+            result.setTotal(total);
+            result.setPages(pages);
+            result.setCurrent(q.getPage());
+            result.setSize(q.getSize());
+            result.setRecords(convertLost(records, currentUserId));
         }
+        if (distanceSort) fillDistance(result.getRecords(), q);
         return result;
+    }
+
+    private <T> void applyDefaultOrder(QueryWrapper<T> qw, String sort) {
+        qw.orderByDesc("hot".equalsIgnoreCase(sort) ? "view_count" : "create_time");
+    }
+
+    /**
+     * Haversine 球面距离排序（MySQL 5.6 无空间函数）。
+     * 坐标为 NULL 的记录排最后，create_time 作为并列时的稳定次序。
+     * 经纬度已在 ItemQuery.hasValidCoordinates() 做过范围校验，此处只拼接数值字面量。
+     */
+    private String distanceOrderBy(ItemQuery q) {
+        String lat = q.getUserLat().toPlainString();
+        String lng = q.getUserLng().toPlainString();
+        return " ORDER BY (latitude IS NULL OR longitude IS NULL) ASC,"
+                + " 6371 * ACOS(LEAST(1, GREATEST(-1,"
+                + " COS(RADIANS(" + lat + ")) * COS(RADIANS(latitude)) * COS(RADIANS(longitude - " + lng + "))"
+                + " + SIN(RADIANS(" + lat + ")) * SIN(RADIANS(latitude))"
+                + "))) ASC, create_time DESC";
+    }
+
+    /** 按与 SQL 相同的球面公式回填公里数，保留两位小数 */
+    private void fillDistance(List<ItemVO> list, ItemQuery q) {
+        double lat1 = q.getUserLat().doubleValue();
+        double lng1 = q.getUserLng().doubleValue();
+        for (ItemVO vo : list) {
+            if (vo.getLatitude() == null || vo.getLongitude() == null) continue;
+            double dLat = Math.toRadians(vo.getLatitude().doubleValue() - lat1);
+            double dLng = Math.toRadians(vo.getLongitude().doubleValue() - lng1);
+            double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                    + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(vo.getLatitude().doubleValue()))
+                    * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            double km = 6371 * 2 * Math.asin(Math.sqrt(Math.min(1, a)));
+            vo.setDistance(Math.round(km * 100) / 100.0);
+        }
     }
 
     private <T> QueryWrapper<T> buildQuery(ItemQuery q, boolean reviewRequired) {

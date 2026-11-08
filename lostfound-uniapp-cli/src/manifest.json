@@ -35,7 +35,7 @@
     "usingComponents": true,
     "permission": {
       "scope.userLocation": {
-        "desc": "你的位置信息将用于标记失物/拾物地点"
+        "desc": "用于展示附近失物招领记录及地图定位"
       }
     },
     "requiredPrivateInfos": ["chooseLocation", "getLocation"]

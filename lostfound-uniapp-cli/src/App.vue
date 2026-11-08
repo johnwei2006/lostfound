@@ -1,7 +1,12 @@
 <script>
+import { ensureLogin } from '@/utils/session'
+import { ensureLocation } from '@/utils/location'
+
 export default {
   onLaunch() {
-    console.log('App launched')
+    // 进入小程序即静默建号/登录 + 获取当前位置；两者互不阻塞且各只执行一次
+    ensureLogin().catch((e) => console.warn('[app] 静默登录异常', e))
+    ensureLocation().catch((e) => console.warn('[app] 定位异常', e))
   },
 }
 </script>

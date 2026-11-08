@@ -14,6 +14,8 @@
       @markertap="onMarkerTap"
     />
 
+    <view class="locate-btn" @tap="relocate">{{ located ? '回到当前位置' : '重新定位' }}</view>
+
     <!-- 底部信息卡 -->
     <view class="info-card lf-card" v-if="active" @tap="goDetail">
       <image v-if="active.images && active.images[0]" :src="active.images[0]" mode="aspectFill" class="info-img" />
@@ -32,13 +34,36 @@
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { itemApi } from '@/utils/api'
+import { ensureLocation, getCachedLocation, refreshLocation } from '@/utils/location'
 
 const mode = ref('found')
 const items = ref([])
 const active = ref(null)
 
-const centerLat = computed(() => active.value?.latitude || 30.593)
-const centerLng = computed(() => active.value?.longitude || 114.305)
+// 默认以启动时获取到的当前位置为中心；点击标记或重新定位时再更新中心点
+const cached = getCachedLocation()
+const centerLat = ref(cached.latitude)
+const centerLng = ref(cached.longitude)
+const located = ref(cached.available)
+
+const applyCurrentLocation = async () => {
+  const loc = await ensureLocation()
+  centerLat.value = loc.latitude
+  centerLng.value = loc.longitude
+  located.value = loc.available
+}
+
+const relocate = async () => {
+  const loc = await refreshLocation()
+  centerLat.value = loc.latitude
+  centerLng.value = loc.longitude
+  located.value = loc.available
+  active.value = null
+  uni.showToast({
+    title: loc.available ? '已定位到当前位置' : '定位不可用，显示默认位置',
+    icon: 'none',
+  })
+}
 
 const markers = computed(() =>
   items.value
@@ -72,6 +97,8 @@ const onMarkerTap = (e) => {
   const marker = markers.value.find((mk) => mk.id === e.detail.markerId)
   if (marker) {
     active.value = items.value.filter((i) => i.longitude && i.latitude)[e.detail.markerId]
+    centerLat.value = Number(marker.latitude)
+    centerLng.value = Number(marker.longitude)
   }
 }
 
@@ -80,7 +107,10 @@ const goDetail = () => {
   uni.navigateTo({ url: `/pages/detail/detail?type=${mode.value}&id=${active.value.id}` })
 }
 
-onLoad(load)
+onLoad(() => {
+  applyCurrentLocation()
+  load()
+})
 </script>
 
 <style scoped>
@@ -88,6 +118,18 @@ onLoad(load)
   display: flex;
   flex-direction: column;
   height: 100vh;
+  position: relative;
+}
+.locate-btn {
+  position: absolute;
+  right: 24rpx;
+  top: 110rpx;
+  background: #fff;
+  color: #2563eb;
+  font-size: 24rpx;
+  padding: 12rpx 24rpx;
+  border-radius: 999rpx;
+  box-shadow: 0 2rpx 12rpx rgba(31, 41, 55, 0.12);
 }
 .tabs {
   display: flex;

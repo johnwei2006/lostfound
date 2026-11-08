@@ -18,6 +18,13 @@
       <view class="tab" :class="{ active: mode === 'lost' }" @tap="switchMode('lost')">寻物启事</view>
     </view>
 
+    <!-- 排序切换：默认距离最近，可切换为发布时间最近 -->
+    <view class="sort-bar">
+      <text class="sort-label">排序</text>
+      <view class="sort-item" :class="{ active: sort === 'distance' }" @tap="switchSort('distance')">距离最近</view>
+      <view class="sort-item" :class="{ active: sort === 'time' }" @tap="switchSort('time')">最新发布</view>
+    </view>
+
     <!-- 分类横滑 -->
     <scroll-view scroll-x class="cate-scroll">
       <view
@@ -48,10 +55,13 @@
 import { ref } from 'vue'
 import { onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { itemApi, CATEGORIES } from '@/utils/api'
+import { ensureLocation, getCachedLocation } from '@/utils/location'
 
 const keyword = ref('')
 const mode = ref('found')
 const category = ref('')
+const sort = ref('distance')
+const location = ref(getCachedLocation())
 const list = ref([])
 const page = ref(1)
 const finished = ref(false)
@@ -67,12 +77,23 @@ const load = async (reset = false) => {
   }
   loading.value = true
   try {
-    const data = await itemApi.page(mode.value, {
+    // 与 App.onLaunch 共用同一次定位结果；定位不可用时自动回退时间排序
+    const loc = await ensureLocation()
+    location.value = loc
+    if (!loc.available && sort.value === 'distance') sort.value = 'time'
+
+    const query = {
       page: page.value,
       size: 10,
       keyword: keyword.value || undefined,
       category: category.value || undefined,
-    })
+      sort: sort.value,
+    }
+    if (sort.value === 'distance') {
+      query.userLat = loc.latitude
+      query.userLng = loc.longitude
+    }
+    const data = await itemApi.page(mode.value, query)
     list.value = reset ? data.records : list.value.concat(data.records)
     finished.value = list.value.length >= data.total
   } catch (e) {
@@ -81,6 +102,15 @@ const load = async (reset = false) => {
     loading.value = false
     uni.stopPullDownRefresh()
   }
+}
+
+const switchSort = (s) => {
+  if (s === 'distance' && !location.value.available) {
+    return uni.showToast({ title: '未获取到位置，已按时间排序', icon: 'none' })
+  }
+  if (sort.value === s) return
+  sort.value = s
+  load(true)
 }
 
 const switchMode = (m) => {
@@ -147,6 +177,30 @@ onReachBottom(() => {
 .tab.active {
   background: #2563eb;
   color: #fff;
+  font-weight: 600;
+}
+.sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin-bottom: 20rpx;
+}
+.sort-label {
+  font-size: 25rpx;
+  color: #9ca3af;
+}
+.sort-item {
+  padding: 8rpx 26rpx;
+  border-radius: 999rpx;
+  font-size: 25rpx;
+  color: #6b7280;
+  background: #fff;
+  border: 2rpx solid #e5e9f0;
+}
+.sort-item.active {
+  color: #2563eb;
+  border-color: #2563eb;
+  background: #eaf1fe;
   font-weight: 600;
 }
 .cate-scroll {

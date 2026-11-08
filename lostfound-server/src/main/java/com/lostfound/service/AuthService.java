@@ -11,6 +11,7 @@ import com.lostfound.dto.WxLoginDTO;
 import com.lostfound.entity.User;
 import com.lostfound.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -67,21 +68,28 @@ public class AuthService {
         String openid = wxAuthService.code2Openid(dto.getCode());
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("openid", openid));
         if (user == null) {
-            user = new User();
+            User fresh = new User();
             // 生成唯一用户名与随机密码，保证微信用户也兼容账号密码体系
             String username = "wx_" + openid.substring(Math.max(0, openid.length() - 12)).toLowerCase();
             if (userMapper.selectCount(new QueryWrapper<User>().eq("username", username)) > 0) {
                 username = username + "_" + System.currentTimeMillis();
             }
-            user.setUsername(username);
-            user.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
-            user.setNickname("微信用户" + openid.substring(Math.max(0, openid.length() - 6)));
-            user.setOpenid(openid);
-            user.setRole("USER");
-            user.setStatus(1);
-            user.setCreateTime(LocalDateTime.now());
-            user.setUpdateTime(LocalDateTime.now());
-            userMapper.insert(user);
+            fresh.setUsername(username);
+            fresh.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+            fresh.setNickname("微信用户" + openid.substring(Math.max(0, openid.length() - 6)));
+            fresh.setOpenid(openid);
+            fresh.setRole("USER");
+            fresh.setStatus(1);
+            fresh.setCreateTime(LocalDateTime.now());
+            fresh.setUpdateTime(LocalDateTime.now());
+            try {
+                userMapper.insert(fresh);
+                user = fresh;
+            } catch (DuplicateKeyException e) {
+                // 启动静默登录可能与其它请求并发，uk_openid 冲突时改用已建账号，不重复建号
+                user = userMapper.selectOne(new QueryWrapper<User>().eq("openid", openid));
+                if (user == null) throw e;
+            }
         }
         if (user.getStatus() == 0) {
             throw new BusinessException(403, "账号已被禁用，请联系管理员");

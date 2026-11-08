@@ -6,6 +6,13 @@ const props = defineProps({ item: { type: Object, required: true } })
 
 const status = computed(() => STATUS_MAP[props.item.status] || STATUS_MAP.WAITING)
 const cover = computed(() => (props.item.images && props.item.images[0]) || '')
+const distanceText = computed(() => {
+  const d = props.item.distance
+  if (d === null || d === undefined) return ''
+  const km = Number(d)
+  if (!Number.isFinite(km)) return ''
+  return km < 1 ? `${Math.max(1, Math.round(km * 1000))}m` : `${km.toFixed(1)}km`
+})
 
 const goDetail = () => {
   uni.navigateTo({ url: `/pages/detail/detail?type=${props.item.type.toLowerCase()}&id=${props.item.id}` })
@@ -27,6 +34,7 @@ const goDetail = () => {
       </view>
       <text class="card-title">{{ item.title }}</text>
       <text class="card-desc lf-muted">{{ item.address || item.city || item.category }}</text>
+      <text v-if="distanceText" class="card-distance">距您 {{ distanceText }}</text>
       <view class="card-foot">
         <text class="lf-muted">{{ item.nickname }}</text>
         <text class="lf-muted">👁 {{ item.viewCount }} · ⭐ {{ item.focusCount }}</text>
@@ -76,6 +84,11 @@ const goDetail = () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.card-distance {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #2563eb;
 }
 .card-foot {
   margin-top: auto;

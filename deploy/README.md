@@ -64,9 +64,6 @@ cd deploy && npm install && node normalize-images.js
 cd deploy
 npm install
 $env:LOSTFOUND_SSH_PASSWORD = '<服务器 SSH 口令>'
-$env:LOSTFOUND_DB_PASSWORD = '<数据库口令>'
-$env:LOSTFOUND_WX_SECRET   = '<小程序 AppSecret>'
-$env:LOSTFOUND_JWT_SECRET  = '<固定随机串，变更会使旧 token 失效>'
 
 node remote-deploy.js survey    # 只读勘察
 node remote-deploy.js install   # 装 JRE17/certbot、签证书、备份、停旧 Tomcat、停 Nginx
@@ -76,6 +73,8 @@ node remote-deploy.js web       # 上传 Web dist + Nginx 配置，reload，HTTP
 ```
 
 > `install` 会短暂停止 Nginx（certbot standalone 占用 80），`web` 阶段会重新启动。重复执行 `backend/web` 是幂等的，会保留上一版 jar（`.bak`）并强制重启服务。
+>
+> 首次部署还需额外设置 `$env:LOSTFOUND_DB_PASSWORD`、`$env:LOSTFOUND_WX_SECRET`（可选 `$env:LOSTFOUND_JWT_SECRET`、`$env:LOSTFOUND_WX_APPID`）。重复部署时脚本会从服务端 `/etc/lostfound/lostfound.env` 回读已生效的值，避免明文密钥进入命令行，同时保证 `JWT_SECRET` 不被轮换、线上旧 token 继续有效；如需强制轮换，显式设置对应环境变量即可。
 
 ## 环境变量（`/etc/lostfound/lostfound.env`）
 
@@ -92,6 +91,10 @@ node remote-deploy.js web       # 上传 Web dist + Nginx 配置，reload，HTTP
 - [x] 外网 `POST /api/file/upload` → 返回 `https://www.globalfinding.com/uploads/...`，图片 HTTPS 可访问（已修复 Nginx `^~ /uploads/` 被正则抢匹配问题）
 - [x] 外网 `/`、`/admin` → 200，SPA 回退正常；HTTP → 301 HTTPS
 - [x] 小程序 1.0.2 已构建并上传（线上域名 + `urlCheck: true`）
+- [x] 小程序 1.1.0 已上传（`cli upload -v 1.1.0`，172.1 KB），待在公众平台提交审核并发布
+- [x] 小程序 1.1.0：启动静默登录、启动定位、首页距离/时间排序、卡片距离展示、地图定位到当前位置
+- [x] 线上 `sort=distance` 返回 `total=241` 且距离递增（3.61km → 32.68km → 85.16km…），`sort=time` 按发布时间递减，无坐标自动回退时间排序
+- [x] 后端 `GET /api/lost/page?sort=distance&userLat=30.593&userLng=114.305` → 距离递增且 `distance` 字段正确；`sort=time` → 发布时间递减；`/latest`、`/map`、`mine` 保持原排序
 - [x] 正式证书已启用（DigiCert DV，SAN 覆盖两个域名，有效期至 2027-02-05），`openssl s_client` 验证链完整
 - [x] 历史图片 `https://www.globalfinding.com/image/20160508/1_232651.jpeg` → 200
 - [x] 51 条失物记录的图片地址已补全为 HTTPS 绝对 URL，微信小程序 `<image>` 可直接加载
@@ -108,8 +111,10 @@ node remote-deploy.js web       # 上传 Web dist + Nginx 配置，reload，HTTP
    已尝试用小程序 `wxa/modify_domain` 接口自动配置，`access_token` 有效但接口已不可用（40014/40066），必须在公众平台手动设置。
    历史微信头像已升级为 HTTPS，但域名为 `wx.qlogo.cn` / `thirdwx.qlogo.cn`，如需在小程序内显示头像，还需把这两个域名加入 `downloadFile` 合法域名（或后续改为本地缓存头像）。
 2. 确认域名已完成 **ICP 备案**（小程序合法域名强制要求）。
-3. 按合规要求补齐**隐私协议/用户协议**、首次进入授权（`__usePrivacyCheck__`）、用户输入内容安全检测；提交审核时提供测试账号。
-4. 版本管理中将 1.0.2 开发版**提交审核**并发布。
+3. **地理位置接口**：`开发管理 → 接口设置` 中确认 `getLocation` 已申请并开通（`requiredPrivateInfos` 已在 `manifest.json` 声明，`permission.scope.userLocation.desc` 写明用于距离排序与地图定位）。注意该 `desc` 上限为 **30 字**，超长会在上传时被微信以 `80058` 拒绝；当前使用「用于展示附近失物招领记录及地图定位」（17 字）。
+4. **用户隐私保护指引**：在公众平台配置隐私协议并勾选「地理位置」；1.1.0 的 `utils/location.js` 已兼容 `getPrivacySetting` / `requirePrivacyAuthorize`，用户未同意或接口不可用时自动回退默认城市 + 时间排序，不会阻塞首屏。若后台开启 `__usePrivacyCheck__`，需在 `manifest.json` 的 `mp-weixin` 节点补充该配置后再构建上传。
+5. 按合规要求补齐用户协议、用户输入内容安全检测；提交审核时提供测试账号，并在审核备注中说明「进入即静默登录、定位用于附近物品排序」。
+6. 版本管理中将 **1.1.0** 开发版提交审核并发布（此前 1.0.2 为上一版本）。
 
 ## 运维与回滚
 
@@ -144,6 +149,7 @@ nginx -t && systemctl reload nginx
 - 旧库 1 条双重编码昵称已修复为「小周不剃光头」，其余数据保持原样。
 - `JWT_SECRET` 已更换，旧 token 全部失效，用户重新登录即可。
 - 默认管理员 `admin / admin123`，**上线后请立即改密**。
-- `application.yml` 中 `WX_SECRET` 等仍带明文默认值；生产已通过环境变量覆盖，建议后续移除默认值并在公众平台轮换密钥。
+- `application.yml` 已移除 `WX_SECRET` 明文默认值，本地调试需自行注入；部署脚本与图片规范化脚本均强制从环境变量读取口令。
+- 距离排序在 SQL 层用 Haversine 表达式全表排序（当前 241 条失物规模无压力）；数据量增大后建议加经纬度边界框预过滤或空间索引。
 - 后端 CORS 当前为 `allowedOriginPatterns("*")`；由于 Web 与小程序均同域访问，可后续收紧为 `https://www.globalfinding.com`。
 - 图片经 Thumbnailator 重编码后体积可能增大，后续可按需接入对象存储或调整压缩参数。

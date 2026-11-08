@@ -14,7 +14,9 @@
 
 ## 核心功能
 
-- 账号注册/登录（JWT，默认管理员 `admin / admin123`），预留微信接口
+- 账号注册/登录（JWT，默认管理员 `admin / admin123`），以及微信小程序 openid 静默登录：进入小程序即自动建号/登录，令牌失效自动重登
+- 小程序启动自动定位（`getLocation`），地图以当前位置为中心；拒绝授权时回退默认城市并自动切为时间排序
+- 首页失物/拾物列表默认按距离近→远排序，可切换为按发布时间近→远，卡片显示距离
 - 失物/拾物发布、浏览、关键词/类别/状态/时间筛选、分页
 - 认领流转：提交申请（凭证描述）→ 发布者审核 → 物品状态流转（待认领/待确认/已完成/已下架）
 - 招领站：列表/详情/站内物品托管，管理员管理站点
@@ -40,11 +42,15 @@ mysql -u root -p < lostfound-server/src/main/resources/sql/schema.sql
 # 2) 配置（可用环境变量覆盖，详见 application.yml）
 #    DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD
 #    JWT_SECRET / UPLOAD_DIR / UPLOAD_BASE_URL
+#    WX_APPID / WX_SECRET（微信登录必需，已从代码默认值中移除，避免密钥入库）
+#    SERVER_ADDRESS（生产设为 127.0.0.1，由 Nginx 反代）
 cd lostfound-server
 mvn spring-boot:run
 ```
 
-启动后自动创建默认管理员 `admin / admin123`（首次运行时）。
+启动后自动创建默认管理员 `admin / admin123`（按用户名判断，存量库同样会补齐）。
+列表接口支持 `sort=distance&userLat=..&userLng=..`（距离近→远，返回 `distance` 公里数）、
+`sort=time`（发布时间近→远）、`sort=hot`（浏览量）；未传合法坐标时自动回退时间排序。
 
 ### 2. Web 前端（端口 5173，已配置 /api 与 /uploads 代理）
 

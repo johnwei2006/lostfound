@@ -32,6 +32,8 @@ public class ItemVO {
     private String address;
     private BigDecimal longitude;
     private BigDecimal latitude;
+    /** 距当前用户的公里数；未定位或物品无坐标时为 null */
+    private Double distance;
 
     /** 拾物=拾获时间；失物=丢失时间 */
     private LocalDateTime itemTime;

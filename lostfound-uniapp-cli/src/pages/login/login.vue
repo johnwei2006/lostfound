@@ -37,43 +37,28 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { authApi } from '@/utils/api'
+import { relogin, setSession } from '@/utils/session'
 
 const mode = ref('wx') // wx-微信登录 | account-账号登录
 const isLogin = ref(true)
 const loading = ref(false)
 const form = reactive({ username: '', password: '', nickname: '', phone: '' })
 
-const saveSession = (data) => {
-  uni.setStorageSync('lf_token', data.token)
-  uni.setStorageSync('lf_user', data.user)
-}
-
 const toHome = () => {
   uni.showToast({ title: '登录成功', icon: 'success' })
   setTimeout(() => uni.switchTab({ url: '/pages/home/home' }), 800)
 }
 
-/** 微信一键登录：wx.login 获取 code，后端换取 openid 并签发 token */
-const wxLogin = () => {
+/** 手动兜底：复用共享的静默登录流程，避免与自动登录产生两套逻辑 */
+const wxLogin = async () => {
   loading.value = true
-  uni.login({
-    provider: 'weixin',
-    success: async (res) => {
-      try {
-        const data = await authApi.wxLogin({ code: res.code })
-        saveSession(data)
-        toHome()
-      } catch (e) {
-        uni.showToast({ title: e.message || '微信登录失败', icon: 'none' })
-      } finally {
-        loading.value = false
-      }
-    },
-    fail: () => {
-      loading.value = false
-      uni.showToast({ title: '微信登录调用失败', icon: 'none' })
-    },
-  })
+  try {
+    const session = await relogin()
+    if (!session) return uni.showToast({ title: '微信登录失败，请重试', icon: 'none' })
+    toHome()
+  } finally {
+    loading.value = false
+  }
 }
 
 const submit = async () => {
@@ -90,7 +75,7 @@ const submit = async () => {
           nickname: form.nickname || form.username,
           phone: form.phone,
         })
-    saveSession(data)
+    setSession(data)
     toHome()
   } catch (e) {
     uni.showToast({ title: e.message, icon: 'none' })

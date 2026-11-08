@@ -30,23 +30,41 @@ if (!PASSWORD) {
   process.exit(1)
 }
 
-function envContent() {
-  const missing = ['LOSTFOUND_DB_PASSWORD', 'LOSTFOUND_WX_SECRET']
-    .filter((k) => !process.env[k])
-  if (missing.length) {
-    throw new Error(`缺少环境变量：${missing.join(', ')}（口令不从代码读取）`)
+function parseEnv(text) {
+  const map = {}
+  for (const line of text.split('\n')) {
+    const m = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*?)\s*$/)
+    if (m) map[m[1]] = m[2]
   }
-  const jwt = process.env.LOSTFOUND_JWT_SECRET || crypto.randomBytes(32).toString('hex')
+  return map
+}
+
+async function envContent(conn) {
+  // 重复部署时沿用服务端已生效的口令与密钥：
+  // 既避免把明文密钥带进命令行，也避免 JWT_SECRET 被轮换导致线上旧 token 全部失效。
+  const r = await exec(conn, 'cat /etc/lostfound/lostfound.env 2>/dev/null || true')
+  const existing = parseEnv(r.out)
+  const pick = (envKey, fileKey, required) => {
+    const value = process.env[envKey] || existing[fileKey]
+    if (!value && required) {
+      throw new Error(`缺少 ${envKey}（环境变量与服务端 ${fileKey} 均未提供）`)
+    }
+    return value
+  }
+  const dbPassword = pick('LOSTFOUND_DB_PASSWORD', 'DB_PASSWORD', true)
+  const wxSecret = pick('LOSTFOUND_WX_SECRET', 'WX_SECRET', true)
+  const wxAppid = pick('LOSTFOUND_WX_APPID', 'WX_APPID', false) || 'wxb45bbe07cf07250c'
+  const jwt = pick('LOSTFOUND_JWT_SECRET', 'JWT_SECRET', false) || crypto.randomBytes(32).toString('hex')
   return [
     'DB_HOST=127.0.0.1',
     'DB_PORT=3306',
     'DB_NAME=lostfound',
     'DB_USER=root',
-    `DB_PASSWORD=${process.env.LOSTFOUND_DB_PASSWORD}`,
+    `DB_PASSWORD=${dbPassword}`,
     'SERVER_ADDRESS=127.0.0.1',
     `JWT_SECRET=${jwt}`,
-    `WX_APPID=${process.env.LOSTFOUND_WX_APPID || 'wxb45bbe07cf07250c'}`,
-    `WX_SECRET=${process.env.LOSTFOUND_WX_SECRET || ''}`,
+    `WX_APPID=${wxAppid}`,
+    `WX_SECRET=${wxSecret}`,
     'UPLOAD_DIR=/home/lostfound/image',
     `UPLOAD_BASE_URL=https://${DOMAIN}/uploads`,
     '',
@@ -202,7 +220,7 @@ async function backend(conn) {
   await run(conn, 'if [ -d /opt/lostfound/uploads ]; then cp -an /opt/lostfound/uploads/. /home/lostfound/image/ 2>/dev/null || true; fi; mkdir -p /home/lostfound/image && echo "图片目录文件数: $(find /home/lostfound/image -type f | wc -l)"', 'merge-uploads')
   await putFile(s, JAR_LOCAL, '/opt/lostfound/lostfound-server.jar')
   await putFile(s, SERVICE_LOCAL, '/etc/systemd/system/lostfound.service')
-  await putBuffer(s, envContent(), '/etc/lostfound/lostfound.env', 0o600)
+  await putBuffer(s, await envContent(conn), '/etc/lostfound/lostfound.env', 0o600)
   console.log('上传完成')
 
   console.log('\n--- 启动服务 ---')
