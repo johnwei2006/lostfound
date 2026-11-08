@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Bell, User as UserIcon, ArrowDown, Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { messageApi } from '@/api'
+import { openQrLogin } from '@/composables/useQrLogin'
+import QrLoginDialog from '@/components/QrLoginDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,6 +26,11 @@ const loadUnread = async () => {
 }
 watch(() => store.isLoggedIn, loadUnread, { immediate: true })
 setInterval(loadUnread, 60_000)
+
+// 401 时 request.ts 已清 localStorage，这里同步 Pinia，且不再整页跳登录
+const onAuthExpired = () => store.logout()
+onMounted(() => window.addEventListener('lf:auth-expired', onAuthExpired))
+onUnmounted(() => window.removeEventListener('lf:auth-expired', onAuthExpired))
 
 const onSearch = () => {
   const kw = keyword.value.trim()
@@ -102,7 +109,8 @@ const onCommand = (cmd: string) => {
             </el-dropdown>
           </template>
           <template v-else>
-            <el-button text class="login-btn" @click="router.push('/login')">登录</el-button>
+            <el-button text class="login-btn" @click="openQrLogin()">微信扫码</el-button>
+            <el-button text class="login-btn" @click="router.push('/login')">账号登录</el-button>
             <el-button type="primary" round @click="router.push('/login?tab=register')">注册</el-button>
           </template>
         </div>
@@ -123,6 +131,9 @@ const onCommand = (cmd: string) => {
         <p class="footer-sub">失物招领平台 · SpringBoot + Vue3 + uni-app 重构版</p>
       </div>
     </footer>
+
+    <!-- 全局唯一扫码登录弹层，避免多页面重复轮询 -->
+    <QrLoginDialog />
   </div>
 </template>
 

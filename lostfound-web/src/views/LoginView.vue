@@ -2,11 +2,16 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Iphone } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { openQrLogin } from '@/composables/useQrLogin'
 
 const route = useRoute()
 const router = useRouter()
 const store = useUserStore()
+
+/** 扫码成功后沿用账号登录的 redirect 语义 */
+const scanLogin = () => openQrLogin((route.query.redirect as string) || '')
 
 const tab = ref(route.query.tab === 'register' ? 'register' : 'login')
 const loading = ref(false)
@@ -105,6 +110,15 @@ const doRegister = async () => {
             </el-form>
           </el-tab-pane>
         </el-tabs>
+
+        <div class="qr-entry">
+          <div class="qr-entry__divider"><span>或使用微信</span></div>
+          <button type="button" class="qr-entry__btn" @click="scanLogin">
+            <el-icon :size="16"><Iphone /></el-icon>
+            微信扫码登录（与小程序同一账号）
+          </button>
+          <p class="qr-entry__hint">扫码后在小程序内点一次「确认登录」即可</p>
+        </div>
       </div>
     </div>
   </div>
@@ -177,5 +191,58 @@ const doRegister = async () => {
   font-size: 12px;
   color: var(--lf-text-3);
   text-align: center;
+}
+.qr-entry {
+  margin-top: 22px;
+  text-align: center;
+}
+.qr-entry__divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--lf-text-3);
+  font-size: 12px;
+}
+.qr-entry__divider::before,
+.qr-entry__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--lf-border);
+}
+.qr-entry__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 18px;
+  padding: 10px 14px;
+  border: 1px solid #d7e5fd;
+  border-radius: 999px;
+  background: var(--lf-primary-soft);
+  color: var(--lf-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease;
+}
+.qr-entry__btn:hover {
+  background: #dbe9fe;
+  border-color: #b6d0fb;
+}
+.qr-entry__btn:focus-visible {
+  outline: 2px solid var(--lf-primary);
+  outline-offset: 2px;
+}
+.qr-entry__hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--lf-text-3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .qr-entry__btn {
+    transition: none;
+  }
 }
 </style>

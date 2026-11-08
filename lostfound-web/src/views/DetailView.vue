@@ -7,6 +7,7 @@ import { claimApi, commentApi, focusApi, itemApi } from '@/api'
 import type { ClaimVO, CommentVO, ItemVO } from '@/types'
 import { STATUS_MAP } from '@/types'
 import { useUserStore } from '@/stores/user'
+import { openQrLogin } from '@/composables/useQrLogin'
 import MapPicker from '@/components/MapPicker.vue'
 import dayjs from 'dayjs'
 
@@ -39,7 +40,7 @@ onMounted(load)
 
 /* 关注 */
 const toggleFocus = async () => {
-  if (!store.isLoggedIn) return router.push('/login')
+  if (!store.isLoggedIn) return openQrLogin()
   if (!item.value) return
   if (item.value.focused) {
     await focusApi.unfocus(props.type.toUpperCase() as 'FOUND' | 'LOST', props.id)
@@ -56,6 +57,7 @@ const toggleFocus = async () => {
 const showClaimDialog = ref(false)
 const claimForm = ref({ description: '', contact: '' })
 const submitClaim = async () => {
+  if (!store.isLoggedIn) return openQrLogin()
   if (!claimForm.value.description.trim()) return ElMessage.warning('请描述物品特征以证明所有权')
   try {
     await claimApi.submit(props.type, props.id, claimForm.value)
@@ -92,7 +94,7 @@ const commentText = ref('')
 const replyTo = ref<CommentVO | null>(null)
 const sendComment = async () => {
   if (!commentText.value.trim()) return
-  if (!store.isLoggedIn) return router.push('/login')
+  if (!store.isLoggedIn) return openQrLogin()
   await commentApi.add(props.type.toUpperCase() as 'FOUND' | 'LOST', props.id, {
     content: commentText.value,
     parentId: replyTo.value?.id,

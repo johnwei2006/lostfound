@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
@@ -7,6 +7,7 @@ import { fileApi, itemApi, siteApi } from '@/api'
 import type { FoundSite } from '@/types'
 import { CATEGORIES } from '@/types'
 import { useUserStore } from '@/stores/user'
+import { openQrLogin } from '@/composables/useQrLogin'
 import MapPicker from '@/components/MapPicker.vue'
 import dayjs from 'dayjs'
 
@@ -35,15 +36,20 @@ const submitting = ref(false)
 
 const isFound = computed(() => type.value === 'found')
 
-onMounted(async () => {
-  if (!store.isLoggedIn) {
-    ElMessage.warning('请先登录后再发布')
-    router.push('/login?redirect=/publish')
-    return
+const loadSites = async () => {
+  try {
+    const s = await siteApi.page({ page: 1, size: 50 })
+    sites.value = s.records
+  } catch (e) {
+    console.error(e)
   }
-  const s = await siteApi.page({ page: 1, size: 50 })
-  sites.value = s.records
-})
+}
+
+// 游客停留在发布页，原地弹出扫码登录框；登录成功后自动补齐站点数据
+watch(() => store.isLoggedIn, (logged) => {
+  if (logged) loadSites()
+  else openQrLogin()
+}, { immediate: true })
 
 const onMapUpdate = (payload: { longitude: number | null; latitude: number | null; address: string }) => {
   form.value.longitude = payload.longitude
@@ -67,6 +73,7 @@ const customUpload = async (options: { file: File; onSuccess: () => void; onErro
 }
 
 const submit = async () => {
+  if (!store.isLoggedIn) return openQrLogin()
   if (!form.value.title.trim()) return ElMessage.warning('请填写物品名称')
   if (!form.value.category) return ElMessage.warning('请选择物品类别')
   submitting.value = true

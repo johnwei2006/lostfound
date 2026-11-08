@@ -2,9 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { User as UserIcon } from '@element-plus/icons-vue'
 import { itemApi, focusApi, claimApi, authApi } from '@/api'
 import type { ClaimVO, ItemVO } from '@/types'
 import { useUserStore } from '@/stores/user'
+import { openQrLogin } from '@/composables/useQrLogin'
 import ItemCard from '@/components/ItemCard.vue'
 
 const router = useRouter()
@@ -20,6 +22,14 @@ const profileForm = ref({ nickname: '', phone: '', email: '', avatar: '' })
 const pwdForm = ref({ oldPassword: '', newPassword: '', confirm: '' })
 
 const loadTab = async (name: string) => {
+  // 游客不发任何需登录的请求：个人资料与三个列表都保持为空
+  if (!store.isLoggedIn) {
+    published.value = []
+    focused.value = []
+    claims.value = []
+    loading.value = false
+    return
+  }
   loading.value = true
   try {
     if (name === 'published') {
@@ -45,7 +55,11 @@ const loadTab = async (name: string) => {
     loading.value = false
   }
 }
-watch(tab, loadTab, { immediate: true })
+watch(tab, (name) => loadTab(name), { immediate: true })
+// 扫码登录成功后立即补齐数据，无需刷新页面
+watch(() => store.isLoggedIn, (logged) => {
+  if (logged) loadTab(tab.value)
+})
 
 const removeItem = async (it: ItemVO) => {
   await ElMessageBox.confirm('确定删除该信息？', '删除确认', { type: 'warning' })
@@ -87,17 +101,34 @@ const claimStatusText = computed(() => ({
 <template>
   <div class="lf-container profile-page">
     <div class="profile-head lf-card">
-      <el-avatar :size="64">{{ store.user?.nickname?.charAt(0) || 'U' }}</el-avatar>
+      <el-avatar :size="64" :class="{ 'profile-avatar--empty': !store.isLoggedIn }">
+        {{ store.isLoggedIn ? (store.user?.nickname?.charAt(0) || 'U') : '' }}
+      </el-avatar>
       <div>
-        <h2>{{ store.user?.nickname }}</h2>
-        <p>{{ store.user?.username }} · {{ store.isAdmin ? '管理员' : '普通用户' }}</p>
+        <h2 v-if="store.user?.nickname">{{ store.user.nickname }}</h2>
+        <p v-if="store.isLoggedIn">{{ store.user?.username }} · {{ store.isAdmin ? '管理员' : '普通用户' }}</p>
+        <p v-else class="profile-hint">登录后查看你的发布、关注与认领记录</p>
       </div>
-      <el-button v-if="store.isAdmin" type="warning" round plain @click="router.push('/admin')">
+      <el-button v-if="!store.isLoggedIn" type="primary" round @click="openQrLogin()">微信扫码登录</el-button>
+      <el-button v-else-if="store.isAdmin" type="warning" round plain @click="router.push('/admin')">
         进入管理后台
       </el-button>
     </div>
 
-    <el-tabs v-model="tab" class="profile-tabs">
+    <div v-if="!store.isLoggedIn" class="guest-panel lf-card">
+      <div class="guest-panel__icon"><el-icon :size="28"><UserIcon /></el-icon></div>
+      <h3>登录后查看个人信息</h3>
+      <p>扫码后与小程序使用同一个账号，发布记录、关注与认领会自动同步。</p>
+      <div class="guest-panel__tabs" aria-label="登录后可用的栏目">
+        <span>我的发布</span>
+        <span>我的关注</span>
+        <span>我的申请</span>
+      </div>
+      <el-button type="primary" round @click="openQrLogin()">微信扫码登录</el-button>
+      <button type="button" class="guest-panel__alt" @click="router.push('/login')">使用账号密码登录</button>
+    </div>
+
+    <el-tabs v-else v-model="tab" class="profile-tabs">
       <el-tab-pane label="我的发布" name="published">
         <div v-if="loading">加载中…</div>
         <div v-else-if="published.length" class="grid">
@@ -179,11 +210,81 @@ const claimStatusText = computed(() => ({
   color: var(--lf-text-3);
   margin-top: 3px;
 }
+.profile-head .profile-hint {
+  color: var(--lf-text-2);
+}
 .profile-head .el-button {
   margin-left: auto;
 }
+.profile-avatar--empty {
+  background: #eef2f8;
+  color: #94a3b8;
+}
 .profile-tabs {
   margin-top: 18px;
+}
+.guest-panel {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 46px 24px 44px;
+  text-align: center;
+  background: linear-gradient(180deg, #fff 0%, #f8fbff 100%);
+}
+.guest-panel__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  background: var(--lf-primary-soft);
+  color: var(--lf-primary);
+}
+.guest-panel h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--lf-text);
+}
+.guest-panel p {
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--lf-text-2);
+}
+.guest-panel__tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 6px 0 10px;
+}
+.guest-panel__tabs span {
+  padding: 5px 14px;
+  border: 1px solid var(--lf-border);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  color: var(--lf-text-3);
+}
+.guest-panel__alt {
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--lf-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 180ms ease;
+}
+.guest-panel__alt:hover {
+  color: #1d4ed8;
+}
+.guest-panel__alt:focus-visible {
+  outline: 2px solid var(--lf-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 .grid {
   display: grid;
@@ -225,5 +326,18 @@ const claimStatusText = computed(() => ({
 .settings-form h4 {
   font-size: 15px;
   margin-bottom: 16px;
+}
+@media (max-width: 520px) {
+  .profile-head {
+    flex-wrap: wrap;
+  }
+  .guest-panel {
+    padding: 34px 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .guest-panel__alt {
+    transition: none;
+  }
 }
 </style>

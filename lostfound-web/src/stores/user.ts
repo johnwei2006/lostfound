@@ -12,19 +12,18 @@ export const useUserStore = defineStore('user', {
     isAdmin: (s) => s.user?.role === 'ADMIN',
   },
   actions: {
-    async login(username: string, password: string) {
-      const data = await authApi.login({ username, password })
+    /** 账号登录与微信扫码登录共用的会话写入口 */
+    setSession(data: { token: string; user: User }) {
       this.token = data.token
       this.user = data.user
       localStorage.setItem('lf_token', data.token)
       localStorage.setItem('lf_user', JSON.stringify(data.user))
     },
+    async login(username: string, password: string) {
+      this.setSession(await authApi.login({ username, password }))
+    },
     async register(form: { username: string; password: string; nickname: string; phone?: string }) {
-      const data = await authApi.register(form)
-      this.token = data.token
-      this.user = data.user
-      localStorage.setItem('lf_token', data.token)
-      localStorage.setItem('lf_user', JSON.stringify(data.user))
+      this.setSession(await authApi.register(form))
     },
     async refresh() {
       if (!this.token) return

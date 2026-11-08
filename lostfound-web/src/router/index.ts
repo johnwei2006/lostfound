@@ -14,7 +14,7 @@ const router = createRouter({
     { path: '/sites', name: 'sites', component: () => import('@/views/SiteListView.vue') },
     { path: '/sites/:id', name: 'siteDetail', component: () => import('@/views/SiteDetailView.vue') },
     { path: '/map', name: 'map', component: () => import('@/views/MapView.vue') },
-    { path: '/profile', name: 'profile', component: () => import('@/views/ProfileView.vue'), meta: { auth: true } },
+    { path: '/profile', name: 'profile', component: () => import('@/views/ProfileView.vue') },
     { path: '/messages', name: 'messages', component: () => import('@/views/MessageView.vue'), meta: { auth: true } },
     { path: '/matches', name: 'matches', component: () => import('@/views/MatchView.vue'), meta: { auth: true } },
     {

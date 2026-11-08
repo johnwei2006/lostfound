@@ -142,6 +142,22 @@ export interface AdminStats {
   categoryStats: { category: string; count: number }[]
 }
 
+/** Web 扫码登录票据：qrCode 为可直接用于 img src 的 data URL */
+export interface QrTicketVO {
+  ticket: string
+  qrCode: string
+  expiresIn: number
+}
+
+export type QrLoginStatus = 'pending' | 'confirmed' | 'expired'
+
+/** Web 轮询扫码状态；confirmed 时携带登录会话 */
+export interface QrStatusVO {
+  status: QrLoginStatus
+  token?: string
+  user?: User
+}
+
 export const CATEGORIES = ['证件', '钥匙', '手机', '电子产品', '钱包', '书籍', '衣物', '其他'] as const
 
 export const STATUS_MAP: Record<string, { text: string; cls: string }> = {

@@ -9,6 +9,8 @@ import type {
   MatchVO,
   Message,
   PageResult,
+  QrStatusVO,
+  QrTicketVO,
   User,
 } from '@/types'
 
@@ -22,6 +24,11 @@ export const authApi = {
   updateProfile: (data: Partial<User>) => request.put('/api/auth/profile', data),
   changePassword: (data: { oldPassword: string; newPassword: string }) =>
     request.put('/api/auth/password', data),
+  /** Web 扫码登录：创建票据、轮询状态；确认接口由小程序端调用 */
+  qrTicket: () => request.post<never, QrTicketVO>('/api/auth/qr/ticket'),
+  qrStatus: (ticket: string) =>
+    request.get<never, QrStatusVO>('/api/auth/qr/status', { params: { ticket } }),
+  qrConfirm: (ticket: string) => request.post<never, void>('/api/auth/qr/confirm', { ticket }),
 }
 
 /* ---------------- 物品（失物/拾物） ---------------- */

@@ -8,6 +8,8 @@ import { CATEGORIES } from '@/types'
 import ItemCard from '@/components/ItemCard.vue'
 import LocationSwitch from '@/components/LocationSwitch.vue'
 import { currentLocation, ensureLocation, getCurrentLocation } from '@/utils/location'
+import { useUserStore } from '@/stores/user'
+import { openQrLogin } from '@/composables/useQrLogin'
 
 const props = defineProps<{ type: 'found' | 'lost' }>()
 const route = useRoute()
@@ -77,6 +79,12 @@ watch(() => route.query, () => {
 })
 watch(() => props.type, load)
 
+/** 游客点发布：原地弹出扫码登录框，登录成功后带着目标继续发布 */
+const onPublish = () => {
+  const target = `/publish?type=${props.type}`
+  if (useUserStore().isLoggedIn) router.push(target)
+  else openQrLogin(target)
+}
 const onPageChange = (page: number) => {
   query.value.page = page
   load()
@@ -109,7 +117,7 @@ const resetFilter = () => {
           {{ isFound ? '以下物品已被好心人拾获，等待失主认领' : '以下物品已丢失，如有线索请联系失主' }}
         </p>
       </div>
-      <el-button type="primary" round @click="router.push(`/publish?type=${type}`)">
+      <el-button type="primary" round @click="onPublish">
         <el-icon style="margin-right: 4px"><Plus /></el-icon>
         发布{{ isFound ? '拾物' : '失物' }}
       </el-button>
