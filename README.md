@@ -84,3 +84,6 @@ npm run build        # 生产构建 → dist/
 | Google Map + 高德混用 | 高德统一（降级策略） |
 | FTP 图片上传 | 本地存储 + 压缩，可切 OSS |
 | 无审核/统计 | 物品审核 + 用户管理 + ECharts 统计 |
+=======
+# lostfound
+
