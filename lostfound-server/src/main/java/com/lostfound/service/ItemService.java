@@ -54,7 +54,7 @@ public class ItemService {
     public PageResult<ItemVO> page(String type, ItemQuery q, Long currentUserId) {
         q.setCurrentUserId(currentUserId);
         // 只有显式请求 distance 且坐标合法时才按距离排序；
-        // 其余调用（/latest、/map、我的发布、管理后台、Web）保持原有时间/热度排序不变。
+        // 其余调用（/latest、/map、我的发布、管理后台）保持原有时间/热度排序不变。
         boolean distanceSort = "distance".equalsIgnoreCase(q.getSort()) && q.hasValidCoordinates();
         PageResult<ItemVO> result = new PageResult<>();
         if ("FOUND".equals(type)) {

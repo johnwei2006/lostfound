@@ -38,6 +38,8 @@ export interface ItemVO {
   focusCount: number
   commentCount: number
   focused?: boolean
+  /** 距用户当前位置的公里数，仅按距离排序（sort=distance）时返回 */
+  distance?: number
   createTime: string
   updateTime?: string
 }
@@ -50,13 +52,20 @@ export interface PageResult<T> {
   records: T[]
 }
 
+/** distance-距离近到远 / time、new-发布时间近到远 / hot-浏览最多 */
+export type ItemSort = 'distance' | 'time' | 'new' | 'hot'
+
 export interface ItemQuery {
   keyword?: string
   category?: string
   city?: string
   status?: string
   days?: number
-  sort?: string
+  sort?: ItemSort
+  /** 用户纬度（gcj02），仅 distance 排序使用 */
+  userLat?: number
+  /** 用户经度（gcj02），仅 distance 排序使用 */
+  userLng?: number
   siteId?: number
   page?: number
   size?: number

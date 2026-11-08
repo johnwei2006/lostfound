@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Star, View, ChatDotRound } from '@element-plus/icons-vue'
+import { Star, View, ChatDotRound, Location } from '@element-plus/icons-vue'
 import { STATUS_MAP, type ItemVO } from '@/types'
 
 const props = defineProps<{ item: ItemVO }>()
@@ -11,6 +11,12 @@ const cover = computed(() => props.item.images?.[0] || '')
 const status = computed(() => STATUS_MAP[props.item.status] || STATUS_MAP.WAITING)
 const typeText = computed(() => (props.item.type === 'FOUND' ? '拾物' : '失物'))
 const typeCls = computed(() => (props.item.type === 'FOUND' ? 'card-type--found' : 'card-type--lost'))
+/** 后端仅在按距离排序时返回，单位公里；首页 latest 接口不返回该字段 */
+const distanceText = computed(() => {
+  const km = props.item.distance
+  if (typeof km !== 'number' || !Number.isFinite(km) || km < 0) return ''
+  return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`
+})
 
 const goDetail = () => {
   router.push(`/${props.item.type.toLowerCase()}/${props.item.id}`)
@@ -29,6 +35,9 @@ const goDetail = () => {
       </div>
       <span class="card-type" :class="typeCls">{{ typeText }}</span>
       <span class="lf-tag card-status" :class="status.cls">{{ status.text }}</span>
+      <span v-if="distanceText" class="card-distance" :aria-label="`距您 ${distanceText}`">
+        <el-icon :size="12"><Location /></el-icon>距您 {{ distanceText }}
+      </span>
     </div>
     <div class="card-body">
       <h3 class="card-title">{{ item.title }}</h3>
@@ -53,6 +62,22 @@ const goDetail = () => {
 </template>
 
 <style scoped>
+.card-distance {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--lf-primary);
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 1px 6px rgba(31, 41, 55, 0.12);
+}
+
 .item-card {
   overflow: hidden;
   cursor: pointer;

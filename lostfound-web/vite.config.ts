@@ -2,6 +2,9 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 
+// 本地未启动后端时，可用 VITE_API_TARGET=https://www.globalfinding.com 指向线上接口
+const apiTarget = process.env.VITE_API_TARGET || 'http://localhost:8080'
+
 export default defineConfig({
   plugins: [vue()],
   resolve: {
@@ -13,12 +16,14 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: apiTarget,
         changeOrigin: true,
+        secure: false,
       },
       '/uploads': {
-        target: 'http://localhost:8080',
+        target: apiTarget,
         changeOrigin: true,
+        secure: false,
       },
     },
   },

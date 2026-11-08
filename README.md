@@ -16,6 +16,7 @@
 
 - 账号注册/登录（JWT，默认管理员 `admin / admin123`），以及微信小程序 openid 静默登录：进入小程序即自动建号/登录，令牌失效自动重登
 - 小程序启动自动定位（`getLocation`），地图以当前位置为中心；拒绝授权时回退默认城市并自动切为时间排序
+- Web 列表（`/lost`、`/found`）默认按距离近→远排序，可切换「最新发布 / 最多浏览」；浏览器定位（WGS84→GCJ02）在 HTTPS 或 localhost 下可用，拒绝授权时回退默认城市并自动切为时间排序，卡片显示距离
 - 首页失物/拾物列表默认按距离近→远排序，可切换为按发布时间近→远，卡片显示距离
 - 失物/拾物发布、浏览、关键词/类别/状态/时间筛选、分页
 - 认领流转：提交申请（凭证描述）→ 发布者审核 → 物品状态流转（待认领/待确认/已完成/已下架）
@@ -59,6 +60,13 @@ cd lostfound-web
 npm install
 npm run dev          # 开发
 npm run build        # 生产构建 → dist/
+```
+
+本地未启动后端时，可让 Vite 代理指向线上接口以直接预览真实数据：
+
+```powershell
+$env:VITE_API_TARGET = 'https://www.globalfinding.com'
+npm run dev
 ```
 
 可选：复制 `.env.example` 为 `.env` 并填入 `VITE_AMAP_KEY`（高德 Web 端 Key）启用地图。
