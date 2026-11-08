@@ -35,6 +35,18 @@
 - 建表脚本：`lostfound-server/src/main/resources/sql/schema.sql`（MySQL 8，14 张表，含旧系统缺失的 message/claim_request/foundsite_manager/match_record 等）
 - 参考：旧 `lostfound.sql`（11 表）与 16 个 `.hbm.xml` 实体映射；演示数据已脱敏，未导入
 
+### 物品类别字典（唯一事实来源）
+
+界面固定 8 类：`证件 / 钥匙 / 手机 / 电子产品 / 钱包 / 书籍 / 衣物 / 其他`，三处必须同步：
+
+- 后端：`lostfound-server/src/main/java/com/lostfound/common/ItemCategory.java`（写入白名单 + 旧代码查询兼容）
+- Web：`lostfound-web/src/types/index.ts` 的 `CATEGORIES`
+- 小程序：`lostfound-uniapp/utils/api.js` 与 `lostfound-uniapp-cli/src/utils/api.js` 的 `CATEGORIES`
+
+旧系统用 `objectType` 数字代码（1~18）表示类别，早期迁移脚本原样写入 `found/lost.category`，导致按中文枚举精确筛选查不到数据。2026-11-08 已对线上 `found.category`、`lost.category` 及 `legacy_found/legacy_lost.objectType` 做全量归一（847 行，18 类按语义归并到 8 类，未知值归「其他」），4 张表原始值完整备份到 `category_norm_bak_20261108135138`（可回滚）。归一后总数不变：found 186、lost 241；8 类筛选之和与总数一致，后台类别统计与智能匹配的类别候选恢复正常。
+
+防再犯：发布/编辑写入前经 `ItemCategory.requireValid` 校验，非法类别返回 400；查询经 `normalize` 把历史数字代码转成中文再精确匹配；历史迁移脚本已改用统一映射（`categorySql`），禁止再原样搬运 `objectType`。新增类别须同时更新上述三处字典并同步存量数据。
+
 ## 启动步骤
 
 ### 1. 后端（端口 8080）

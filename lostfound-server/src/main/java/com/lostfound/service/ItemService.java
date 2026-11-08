@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lostfound.common.BusinessException;
+import com.lostfound.common.ItemCategory;
 import com.lostfound.common.PageResult;
 import com.lostfound.dto.ItemQuery;
 import com.lostfound.dto.PublishItemDTO;
@@ -142,19 +143,35 @@ public class ItemService {
         }
     }
 
+    /**
+     * 兼容小程序端把未设置的参数序列化成字符串 "undefined" / "null" 的情况：
+     * 这些值等同于未传，不能作为真实筛选条件，否则列表会返回 0 条。
+     */
+    private static String param(String value) {
+        if (value == null) return null;
+        String v = value.trim();
+        if (v.isEmpty() || "undefined".equalsIgnoreCase(v) || "null".equalsIgnoreCase(v)) return null;
+        return v;
+    }
+
     private <T> QueryWrapper<T> buildQuery(ItemQuery q, boolean reviewRequired) {
         QueryWrapper<T> qw = new QueryWrapper<>();
-        if (q.getKeyword() != null && !q.getKeyword().isBlank()) {
-            qw.and(w -> w.like("title", q.getKeyword()).or().like("description", q.getKeyword()));
+        String keyword = param(q.getKeyword());
+        if (keyword != null) {
+            qw.and(w -> w.like("title", keyword).or().like("description", keyword));
         }
-        if (q.getCategory() != null && !q.getCategory().isBlank()) {
-            qw.eq("category", q.getCategory());
+        // 兼容历史分享链接里的 objectType 数字代码/旧别名，统一转成界面 8 类后再精确匹配
+        String category = ItemCategory.normalize(param(q.getCategory()));
+        if (category != null) {
+            qw.eq("category", category);
         }
-        if (q.getCity() != null && !q.getCity().isBlank()) {
-            qw.eq("city", q.getCity());
+        String city = param(q.getCity());
+        if (city != null) {
+            qw.eq("city", city);
         }
-        if (q.getStatus() != null && !q.getStatus().isBlank()) {
-            qw.eq("status", q.getStatus());
+        String status = param(q.getStatus());
+        if (status != null) {
+            qw.eq("status", status);
         } else {
             qw.ne("status", "OFFLINE");
         }
@@ -464,7 +481,7 @@ public class ItemService {
 
     private void applyDto(Found f, PublishItemDTO dto) {
         f.setTitle(dto.getTitle());
-        f.setCategory(dto.getCategory());
+        f.setCategory(ItemCategory.requireValid(dto.getCategory()));
         f.setDescription(dto.getDescription());
         f.setImages(toJson(dto.getImages()));
         f.setProvince(dto.getProvince());
@@ -479,7 +496,7 @@ public class ItemService {
 
     private void applyDto(Lost l, PublishItemDTO dto) {
         l.setTitle(dto.getTitle());
-        l.setCategory(dto.getCategory());
+        l.setCategory(ItemCategory.requireValid(dto.getCategory()));
         l.setDescription(dto.getDescription());
         l.setImages(toJson(dto.getImages()));
         l.setProvince(dto.getProvince());

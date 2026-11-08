@@ -199,7 +199,7 @@ nginx -t && systemctl reload nginx
 ## 已知限制与建议
 
 - MySQL 5.6 不支持 JSON 列，`images` 用 TEXT 存 JSON 字符串；Hikari 连接池 20，MySQL `max_connections=151`，单机足够。
-- 迁移后的 `category` 部分为旧系统数字编码（如 `"2"`），前端分类展示为原值；如需中文映射可做一次数据清洗。
+- 迁移后的 `category` 曾是旧系统 `objectType` 数字编码（如 `"2"`），按中文枚举筛选会查不到；已于 2026-11-08 全量归一为 8 类，详见下方「物品类别归一」。
 - 旧库 1 条双重编码昵称已修复为「小周不剃光头」，其余数据保持原样。
 - `JWT_SECRET` 已更换，旧 token 全部失效，用户重新登录即可。
 - 默认管理员 `admin / admin123`，**上线后请立即改密**。
@@ -207,3 +207,25 @@ nginx -t && systemctl reload nginx
 - 距离排序在 SQL 层用 Haversine 表达式全表排序（当前 241 条失物规模无压力）；数据量增大后建议加经纬度边界框预过滤或空间索引。
 - 后端 CORS 当前为 `allowedOriginPatterns("*")`；由于 Web 与小程序均同域访问，可后续收紧为 `https://www.globalfinding.com`。
 - 图片经 Thumbnailator 重编码后体积可能增大，后续可按需接入对象存储或调整压缩参数。
+
+## 物品类别归一（2026-11-08）
+
+**问题**：旧库 `objectType` 是 1~18 的数字代码，早期迁移脚本用 `COALESCE(NULLIF(objectType, ''), '其他')` 原样写入 `found/lost.category`；Web 与小程序按 8 个中文枚举精确查询（`qw.eq("category", ...)`），因此按类别筛选几乎全为 0，`MatchService` 的类别候选与后台 `GROUP BY category` 统计也被拆成数字桶。
+
+**执行范围**（幂等脚本，位于临时运维目录，不入库）：
+
+- `found.category`、`lost.category`、`legacy_found.objectType`、`legacy_lost.objectType` 共 847 行；18 类按语义归并为 8 类（如 `2/3→证件`、`4/5→钱包`、`9→电子产品`、`10/11→书籍`、`17/18/宠物/空值→其他`）。
+- 执行前建备份表 `category_norm_bak_20261108135138`（`tbl + item_id + old_category`，847 行），事务内 UPDATE，并校验 4 张表总行数不变、变更行数与备份行数一致；失败自动回滚。
+- 回滚：`node category-normalize.js rollback 20261108135138`（备份表保留不删除）。`survey` / `dry-run` / `verify` 均为只读或幂等，可重复执行。
+
+**验收**（线上 HTTPS + 数据库）：
+
+- 8 类逐个筛选：`found` 证件 81 / 钥匙 3 / 手机 18 / 电子产品 24 / 钱包 12 / 书籍 2 / 衣物 3 / 其他 43，合计 186 = 全量；`lost` 证件 107 / 钥匙 12 / 手机 16 / 电子产品 9 / 钱包 41 / 书籍 4 / 衣物 4 / 其他 48，合计 241 = 全量。
+- 详情 `category` 返回中文；`/latest` 缓存条目无残留非标准值；`match_record` 行数不变（0，无冗余类别列，不会自动重算）；后台类别统计只剩 8 类。
+- `verify` 输出 4 张表非标准值均为 0。
+
+**防再犯**：后端新增 `ItemCategory.java` 作为类别唯一事实来源，发布/编辑写入前 `requireValid` 校验（非法类别返回 400），查询 `normalize` 兼容历史数字代码；`dbtool/category-mapping.js` 提供统一 SQL 映射，`migrate.js` / `migrate2.js` / `migrate3.js` / `migrate-found.js` 已改用映射，禁止从旧 dump 重跑时再次写入数字代码。三处界面枚举（Web `types/index.ts`、小程序 `utils/api.js`、CLI 源码副本）保持不变。
+
+**部署与回归（2026-11-08）**：`node deploy/remote-deploy.js backend` 已上传含类别白名单的新 jar 并 `systemctl restart lostfound`（`health=200`、`active`），重启同时清空 Caffeine 缓存。部署前只读核对 `/etc/lostfound/lostfound.env` 仅含 11 个固定键，重写不会丢失额外配置（当前仍未设置 `WX_QR_ENV_VERSION`，待 1.3.0 发布后按上文追加）。线上回归：8 类筛选与总数一致、`/latest` 无残留非标准值、历史参数 `category=2` → 81 条、`category=4` → 41 条、`category=其它` → 43 条，证明新 jar 的查询兼容已生效。
+
+> `remote-deploy.js backend` 重启服务会清空 Caffeine `latestItems` / `siteStats` / `adminOverview` 缓存，因此数据归一后需重新部署一次后端 jar，以刷新首页与后台统计缓存；切勿用 `all`（会重跑 install 的破坏性步骤）。
