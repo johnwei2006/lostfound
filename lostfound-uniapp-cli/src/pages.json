@@ -1,6 +1,6 @@
 {
   "pages": [
-    { "path": "pages/home/home", "style": { "navigationBarTitleText": "寻物志", "enablePullDownRefresh": true } },
+    { "path": "pages/home/home", "style": { "navigationBarTitleText": "百觅", "enablePullDownRefresh": true } },
     { "path": "pages/publish/publish", "style": { "navigationBarTitleText": "发布" } },
     { "path": "pages/messages/messages", "style": { "navigationBarTitleText": "消息" } },
     { "path": "pages/mine/mine", "style": { "navigationBarTitleText": "我的" } },
@@ -14,7 +14,7 @@
   "globalStyle": {
     "navigationBarBackgroundColor": "#2563EB",
     "navigationBarTextStyle": "white",
-    "navigationBarTitleText": "寻物志",
+    "navigationBarTitleText": "百觅",
     "backgroundColor": "#F5F7FA"
   },
   "tabBar": {

@@ -56,7 +56,7 @@ const doRegister = async () => {
   <div class="login-page">
     <div class="login-card lf-card">
       <div class="login-side">
-        <h2>寻物志</h2>
+        <h2>百觅</h2>
         <p>让每一份遗失都有归途</p>
         <ul>
           <li>发布失物/拾物启事</li>

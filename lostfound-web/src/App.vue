@@ -62,7 +62,7 @@ const onCommand = (cmd: string) => {
             />
             <circle cx="24" cy="20" r="4.5" class="logo-dot" />
           </svg>
-          <span class="logo-text">寻物志</span>
+          <span class="logo-text">百觅</span>
         </RouterLink>
 
         <nav class="nav">
@@ -127,7 +127,7 @@ const onCommand = (cmd: string) => {
 
     <footer class="app-footer">
       <div class="lf-container">
-        <p>寻物志 · 让每一份遗失都有归途</p>
+        <p>百觅 · 让每一份遗失都有归途</p>
         <p class="footer-sub">失物招领平台 · SpringBoot + Vue3 + uni-app 重构版</p>
       </div>
     </footer>

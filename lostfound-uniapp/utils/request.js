@@ -7,13 +7,27 @@ export { BASE_URL }
 const AUTH_PATHS = ['/api/auth/login', '/api/auth/register', '/api/auth/wx-login']
 const isAuthRequest = (url) => AUTH_PATHS.some((p) => url.startsWith(p))
 
+/**
+ * 微信小程序的 wx.request 会把 data 中的 undefined 序列化成字符串 "undefined"，
+ * 后端会把它当成真实筛选值（如 keyword=undefined），从而过滤出空列表。
+ * 统一剔除未设置的可选参数，保证 GET 查询串干净。
+ */
+function normalizeData(data) {
+  if (Object.prototype.toString.call(data) !== '[object Object]') return data
+  const cleaned = {}
+  Object.keys(data).forEach((key) => {
+    if (data[key] !== undefined) cleaned[key] = data[key]
+  })
+  return cleaned
+}
+
 function doRequest(options, retried = false) {
   return new Promise((resolve, reject) => {
     const token = uni.getStorageSync('lf_token')
     uni.request({
       url: BASE_URL + options.url,
       method: options.method || 'GET',
-      data: options.data,
+      data: normalizeData(options.data),
       header: {
         Authorization: token ? `Bearer ${token}` : '',
         ...(options.header || {}),
@@ -50,8 +64,17 @@ function doRequest(options, retried = false) {
   })
 }
 
-/** 所有请求先等待同一次静默登录完成，避免 App.onLaunch 与首屏请求竞态 */
-const request = (options) => ensureLogin().then(() => doRequest(options))
+/**
+ * 列表/地图等公开接口后端已支持匿名访问，不必等待冷启动的静默登录：
+ * 否则 wx.login 慢或失败时，首页首屏请求会一直挂在登录 Promise 上，表现为"初次加载没数据"。
+ * 需要登录的接口仍等待同一次登录；即便误判，401 时 doRequest 也会静默重登并重试一次。
+ */
+const PUBLIC_GET = /^\/api\/(found|lost)\/(page|latest|map)$|^\/api\/foundsite\/page$/
+const isPublicGet = (options) =>
+  (options.method || 'GET').toUpperCase() === 'GET' && PUBLIC_GET.test(options.url.split('?')[0])
+
+const request = (options) =>
+  isPublicGet(options) ? doRequest(options) : ensureLogin().then(() => doRequest(options))
 
 function doUpload(filePath, retried = false) {
   return new Promise((resolve, reject) => {

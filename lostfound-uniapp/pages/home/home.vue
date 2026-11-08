@@ -44,7 +44,9 @@
     <!-- 列表 -->
     <view class="list">
       <item-card v-for="it in list" :key="it.id" :item="it" />
-      <view v-if="!loading && list.length === 0" class="lf-empty">暂无{{ mode === 'found' ? '拾物' : '失物' }}信息</view>
+      <view v-if="!loading && list.length === 0" class="lf-empty" @tap="load(true)">
+        {{ loadError ? '加载失败，点击重试' : (mode === 'found' ? '暂无拾物信息' : '暂无失物信息') }}
+      </view>
       <view v-if="loading" class="lf-empty">加载中…</view>
       <view v-if="!loading && finished && list.length > 0" class="lf-empty">— 没有更多了 —</view>
     </view>
@@ -72,42 +74,85 @@ const page = ref(1)
 const finished = ref(false)
 const loading = ref(false)
 const categories = [{ label: '全部', value: '' }, ...CATEGORIES.map((c) => ({ label: c, value: c }))]
-/** 请求序号：位置切换等新请求发出后，丢弃仍在飞行的旧响应，避免列表回滚 */
+/** 请求序号：只有真正发出的请求才占用；activeSeq 为最新一次筛选/位置重置 */
 let requestSeq = 0
+let activeSeq = 0
+/** 在飞行的请求数：确保 loading 一定会被释放，不会卡在「加载中」 */
+let pending = 0
+let hasLoaded = false
+let autoRetried = false
+let retryTimer = null
+const loadError = ref(false)
 
 const load = async (reset = false) => {
+  // 页面内容不足一屏时小程序会连续触发 onReachBottom；列表为空 / 加载中 / 已到底时一律不发请求，
+  // 否则页码会被推到很大，且空转的调用会占用序号，导致首屏响应被整体丢弃
+  if (!reset && (loading.value || finished.value || list.value.length === 0)) return
+
   const seq = ++requestSeq
-  // reset 由位置变化 / 筛选触发，必须能打断旧请求；仅触底翻页需要防重复
   if (reset) {
+    activeSeq = seq
     page.value = 1
     finished.value = false
-    list.value = []
-  } else if (loading.value) {
-    return
+    // 不清空已有列表：新请求成功后再整体替换，任一次请求失败都不会留下空白首页
+  } else {
+    page.value += 1
   }
+  pending += 1
   loading.value = true
   try {
     // 统一读取位置（手动选点 > 自动定位 > 默认城市）
     const loc = getCurrentLocation()
-    const query = {
-      page: page.value,
-      size: 10,
-      keyword: keyword.value || undefined,
-      category: category.value || undefined,
-      sort: sort.value,
-    }
+    // 未选中的筛选项不要放进 data：小程序端 undefined 可能被序列化成字符串 "undefined"，
+    // 后端会当成真实的 keyword/category 条件，导致列表返回 0 条
+    const query = { page: page.value, size: 10, sort: sort.value }
+    if (keyword.value) query.keyword = keyword.value
+    if (category.value) query.category = category.value
     if (sort.value === 'distance') {
       query.userLat = loc.latitude
       query.userLng = loc.longitude
     }
+    console.log('[home] page query', mode.value, query)
     const data = await itemApi.page(mode.value, query)
-    if (seq !== requestSeq) return
-    list.value = reset ? data.records : list.value.concat(data.records)
-    finished.value = list.value.length >= data.total
+    // 只丢弃「已被更新的筛选/位置重置取代」的旧响应，避免并发请求把首屏数据全部丢掉
+    if (seq < activeSeq) return
+    hasLoaded = true
+    loadError.value = false
+    let records = data.records || []
+    // 分页接口被异常条件过滤成空时，用最新物品接口兜底，保证首屏有内容可看
+    if (reset && page.value === 1 && records.length === 0 && !keyword.value && !category.value) {
+      try {
+        const latest = await itemApi.latest(mode.value, 20)
+        if (seq < activeSeq) return
+        if (Array.isArray(latest) && latest.length) records = latest
+      } catch (err) {
+        console.warn('[home] latest fallback failed', err)
+      }
+    }
+    console.log('[home] page result', data && data.total, records.length)
+    if (reset) {
+      if (seq === activeSeq) list.value = records
+    } else {
+      list.value = list.value.concat(records)
+    }
+    console.log('[home] list set', list.value.length, 'loading', loading.value)
+    finished.value = list.value.length >= (data.total || records.length)
   } catch (e) {
-    if (seq === requestSeq) console.error(e)
+    if (seq >= activeSeq) {
+      console.error('[home] page failed', e)
+      loadError.value = true
+      // 首屏请求偶发失败（网络抖动 / 域名未就绪）自动重试一次，避免列表一直空白
+      if (!hasLoaded && !autoRetried) {
+        autoRetried = true
+        retryTimer = setTimeout(() => {
+          retryTimer = null
+          load(true)
+        }, 800)
+      }
+    }
   } finally {
-    if (seq === requestSeq) {
+    pending -= 1
+    if (pending === 0) {
       loading.value = false
       uni.stopPullDownRefresh()
     }
@@ -145,13 +190,11 @@ const unsubscribe = subscribeLocation((next) => {
 
 onShow(() => load(true))
 onPullDownRefresh(() => load(true))
-onReachBottom(() => {
-  if (!finished.value && !loading.value) {
-    page.value++
-    load()
-  }
+onReachBottom(() => load())
+onUnload(() => {
+  if (retryTimer) clearTimeout(retryTimer)
+  unsubscribe()
 })
-onUnload(() => unsubscribe())
 </script>
 
 <style scoped>

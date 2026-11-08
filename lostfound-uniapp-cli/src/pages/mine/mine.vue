@@ -34,7 +34,7 @@
     </view>
 
     <view style="text-align: center; margin-top: 30rpx" class="lf-muted">
-      寻物志 · SpringBoot + Vue3 重构版
+     百觅 · SpringBoot + Vue3 重构版
     </view>
   </view>
 </template>

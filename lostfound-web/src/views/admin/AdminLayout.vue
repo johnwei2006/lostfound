@@ -24,7 +24,7 @@ const menus = [
           <path d="M24 10a10 10 0 0 1 10 10c0 7-10 18-10 18S14 27 14 20a10 10 0 0 1 10-10z" fill="#2563EB"/>
           <circle cx="24" cy="20" r="4.5" fill="#F97316"/>
         </svg>
-        <span>寻物志 · 管理后台</span>
+        <span>百觅 · 管理后台</span>
       </div>
       <nav class="admin-nav">
         <RouterLink v-for="m in menus" :key="m.path" :to="m.path" class="admin-link" :class="{ active: route.path.startsWith(m.path) }">
