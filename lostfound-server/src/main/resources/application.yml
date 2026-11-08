@@ -54,6 +54,14 @@ lostfound:
     base-url: ${UPLOAD_BASE_URL:http://localhost:8080/uploads}
     # 图片最大边长（超出则等比压缩）
     max-edge: 1600
+  qr-login:
+    # 小程序码落地页需随小程序新版本发布；开发/体验版验证用 trial，正式版改为 release
+    page: ${WX_QR_PAGE:pages/web-login/web-login}
+    env-version: ${WX_QR_ENV_VERSION:trial}
+    check-path: ${WX_QR_CHECK_PATH:false}
+    ticket-ttl-seconds: ${QR_TICKET_TTL:300}
+    max-tickets: ${QR_MAX_TICKETS:2000}
+    rate-limit-per-minute: ${QR_RATE_LIMIT:10}
 
 logging:
   level:
