@@ -6,6 +6,7 @@ import { itemApi, siteApi } from '@/api'
 import type { ItemVO, FoundSite } from '@/types'
 import { CATEGORIES } from '@/types'
 import ItemCard from '@/components/ItemCard.vue'
+import LocationSwitch from '@/components/LocationSwitch.vue'
 
 const router = useRouter()
 const keyword = ref('')
@@ -84,6 +85,8 @@ const goCategory = (c: string) => router.push({ name: 'foundList', query: { cate
 
     <!-- 分类快捷入口 -->
     <section class="lf-container section">
+      <!-- 位置全局生效；首页版块仍按最新展示，进入列表页后按此位置排序并显示距离 -->
+      <LocationSwitch />
       <div class="category-row">
         <button v-for="c in CATEGORIES" :key="c" class="category-item" @click="goCategory(c)">
           {{ c }}

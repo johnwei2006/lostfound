@@ -1,16 +1,23 @@
+import { shallowRef, watch } from 'vue'
+
 /**
- * Web 端定位：与小程序 utils/location.js 保持一致的降级策略。
+ * Web 端当前位置
  *
- * 浏览器 Geolocation 返回 WGS84 坐标，而库中物品坐标来自高德（GCJ02），
- * 因此定位成功后换算为 GCJ02，避免产生约 500m 的系统性偏差。
- * 拒绝授权、超时或接口不可用时回退默认城市，由列表页自动切换为时间排序。
+ * - 浏览器 Geolocation 返回 WGS84，库中物品坐标为高德 GCJ02，
+ *   自动定位成功后换算为 GCJ02，避免约 500m 的系统性偏差；手动选点坐标已是 GCJ02，不再换算
+ * - 自动定位结果缓存到 localStorage（10 分钟），供刷新后复用
+ * - 「地图选点」设置会话级手动位置：只保存在模块内存中，不落盘，
+ *   刷新页面或新开会话后自动失效并恢复自动定位
+ * - 读取优先级：手动选点 > 自动定位缓存 > 默认城市
+ * - currentLocation 是模块级响应式单例，所有页面统一读取并 watch 变化
  */
 
 export interface WebLocation {
   latitude: number
   longitude: number
   available: boolean
-  source: 'browser' | 'cached' | 'default'
+  source: 'browser' | 'cached' | 'default' | 'manual'
+  address?: string
 }
 
 export const DEFAULT_CITY = '武汉'
@@ -26,12 +33,23 @@ interface CachedLocation {
   ts: number
 }
 
+function isValidCoordinates(lat: number, lng: number) {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
+  )
+}
+
 function readCache(): CachedLocation | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const c = JSON.parse(raw) as CachedLocation
-    if (!Number.isFinite(c.latitude) || !Number.isFinite(c.longitude)) return null
+    if (!isValidCoordinates(Number(c.latitude), Number(c.longitude))) return null
     if (Date.now() - c.ts > CACHE_TTL) return null
     return c
   } catch {
@@ -86,7 +104,81 @@ export function wgs84ToGcj02(lng: number, lat: number): [number, number] {
 }
 
 function fallback(): WebLocation {
-  return { latitude: DEFAULT_LOCATION.latitude, longitude: DEFAULT_LOCATION.longitude, available: false, source: 'default' }
+  return {
+    latitude: DEFAULT_LOCATION.latitude,
+    longitude: DEFAULT_LOCATION.longitude,
+    available: false,
+    source: 'default',
+  }
+}
+
+function autoLocation(): WebLocation {
+  const c = readCache()
+  return c
+    ? { latitude: c.latitude, longitude: c.longitude, available: true, source: 'cached' }
+    : fallback()
+}
+
+/** 当前生效位置的响应式单例（只读使用，修改请走 setManualLocation / clearManualLocation） */
+export const currentLocation = shallowRef<WebLocation>(autoLocation())
+
+/** 会话级手动覆盖的权威状态，与展示用的 currentLocation 分离，避免自动定位结果反向覆盖 */
+let manualOverride: WebLocation | null = null
+let pending: Promise<WebLocation> | null = null
+
+/** 自动定位结果仅在无手动覆盖时发布；force 用于定位失败时强制通知页面降级 */
+function publish(loc: WebLocation, force = false) {
+  if (manualOverride) return
+  if (!force) {
+    const prev = currentLocation.value
+    if (
+      prev.latitude === loc.latitude &&
+      prev.longitude === loc.longitude &&
+      prev.available === loc.available &&
+      prev.source === loc.source
+    ) {
+      return
+    }
+  }
+  currentLocation.value = { ...loc }
+}
+
+/** 同步读取当前生效位置：手动选点 > 自动定位缓存 > 默认城市 */
+export function getCurrentLocation(): WebLocation {
+  return currentLocation.value
+}
+
+/** 设置会话级手动位置（GCJ02 坐标），不写入 localStorage */
+export function setManualLocation(loc: {
+  latitude: number
+  longitude: number
+  address?: string
+}): boolean {
+  const latitude = Number(loc.latitude)
+  const longitude = Number(loc.longitude)
+  if (!isValidCoordinates(latitude, longitude)) return false
+  manualOverride = {
+    latitude,
+    longitude,
+    address: loc.address || '',
+    available: true,
+    source: 'manual',
+  }
+  currentLocation.value = { ...manualOverride }
+  return true
+}
+
+/** 清除手动位置，回到自动定位结果 */
+export function clearManualLocation(): WebLocation {
+  manualOverride = null
+  const loc = autoLocation()
+  currentLocation.value = { ...loc }
+  return loc
+}
+
+/** 订阅位置变化，返回取消监听函数 */
+export function subscribeLocation(cb: (loc: WebLocation) => void) {
+  return watch(currentLocation, (loc) => cb(loc))
 }
 
 function requestBrowserLocation(): Promise<WebLocation> {
@@ -107,29 +199,49 @@ function requestBrowserLocation(): Promise<WebLocation> {
   })
 }
 
-/** 同步读取缓存；无缓存时返回默认城市且 available=false */
-export function getCachedLocation(): WebLocation {
-  const c = readCache()
-  return c
-    ? { latitude: c.latitude, longitude: c.longitude, available: true, source: 'cached' }
-    : fallback()
-}
-
-let pending: Promise<WebLocation> | null = null
-
-/** 并发请求共享同一个 Promise，避免重复弹出定位授权 */
+/** 确保自动定位完成；已有手动位置时直接返回，不打扰用户 */
 export function ensureLocation(): Promise<WebLocation> {
+  if (manualOverride) return Promise.resolve(getCurrentLocation())
   const c = readCache()
-  if (c) return Promise.resolve({ latitude: c.latitude, longitude: c.longitude, available: true, source: 'cached' })
+  if (c) {
+    publish({ latitude: c.latitude, longitude: c.longitude, available: true, source: 'cached' })
+    return Promise.resolve(getCurrentLocation())
+  }
   if (!pending) {
-    pending = requestBrowserLocation().finally(() => {
-      pending = null
-    })
+    pending = requestBrowserLocation()
+      .then((loc) => {
+        publish(loc, !loc.available)
+        return getCurrentLocation()
+      })
+      .finally(() => {
+        pending = null
+      })
   }
   return pending
 }
 
-/** 「重新定位」：跳过缓存，强制重新请求浏览器定位 */
+/** 恢复自动定位：清手动覆盖 + 清自动缓存 + 重新定位，只广播一次结果 */
 export function refreshLocation(): Promise<WebLocation> {
-  return requestBrowserLocation()
+  manualOverride = null
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // 隐私模式下忽略
+  }
+  pending = requestBrowserLocation()
+    .then((loc) => {
+      // 定位期间用户可能又手动选了点，此时不得用自动结果覆盖手动覆盖
+      if (manualOverride) return getCurrentLocation()
+      currentLocation.value = { ...loc }
+      return getCurrentLocation()
+    })
+    .finally(() => {
+      pending = null
+    })
+  return pending
+}
+
+/** 兼容旧调用：返回当前生效位置（含手动覆盖） */
+export function getCachedLocation(): WebLocation {
+  return getCurrentLocation()
 }

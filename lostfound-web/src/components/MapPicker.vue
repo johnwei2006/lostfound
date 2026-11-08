@@ -5,7 +5,7 @@
  * 未配置时自动降级为手动输入经纬度。
  */
 import { onMounted, ref, watch } from 'vue'
-import { Warning } from '@element-plus/icons-vue'
+import { Location, Warning } from '@element-plus/icons-vue'
 
 const props = defineProps<{
   longitude?: number | null
@@ -107,20 +107,30 @@ defineExpose({ searchPlace })
         </template>
       </el-alert>
       <div class="fallback-form">
-        <el-input-number
-          :model-value="longitude ?? undefined"
-          placeholder="经度，如 116.397"
-          :precision="6"
-          :controls="false"
-          @update:model-value="(v: number | undefined) => emit('update', { longitude: v ?? null, latitude: latitude ?? null, address: address || '' })"
-        />
-        <el-input-number
-          :model-value="latitude ?? undefined"
-          placeholder="纬度，如 39.909"
-          :precision="6"
-          :controls="false"
-          @update:model-value="(v: number | undefined) => emit('update', { longitude: longitude ?? null, latitude: v ?? null, address: address || '' })"
-        />
+        <label class="fallback-field">
+          <span>经度（GCJ02，-180 ~ 180，如 114.305）</span>
+          <el-input-number
+            :model-value="longitude ?? undefined"
+            placeholder="经度"
+            :precision="6"
+            :min="-180"
+            :max="180"
+            :controls="false"
+            @update:model-value="(v: number | undefined) => emit('update', { longitude: v ?? null, latitude: latitude ?? null, address: address || '' })"
+          />
+        </label>
+        <label class="fallback-field">
+          <span>纬度（GCJ02，-90 ~ 90，如 30.593）</span>
+          <el-input-number
+            :model-value="latitude ?? undefined"
+            placeholder="纬度"
+            :precision="6"
+            :min="-90"
+            :max="90"
+            :controls="false"
+            @update:model-value="(v: number | undefined) => emit('update', { longitude: longitude ?? null, latitude: v ?? null, address: address || '' })"
+          />
+        </label>
       </div>
     </div>
     <div v-else ref="mapContainer" class="map-container">
@@ -129,7 +139,7 @@ defineExpose({ searchPlace })
         点击地图选择位置
       </div>
     </div>
-    <p v-if="address" class="map-address">📍 {{ address }}</p>
+    <p v-if="address" class="map-address"><el-icon><Location /></el-icon>{{ address }}</p>
   </div>
 </template>
 
@@ -159,9 +169,25 @@ defineExpose({ searchPlace })
 .map-fallback .fallback-form {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
   margin-top: 12px;
 }
+.fallback-field {
+  display: flex;
+  flex: 1;
+  min-width: 180px;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--lf-text-2);
+}
+.fallback-field :deep(.el-input-number) {
+  width: 100%;
+}
 .map-address {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin-top: 8px;
   font-size: 13px;
   color: var(--lf-text-2);
