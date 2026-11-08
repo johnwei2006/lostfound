@@ -7,6 +7,7 @@ import com.lostfound.dto.ChangePasswordDTO;
 import com.lostfound.dto.LoginDTO;
 import com.lostfound.dto.RegisterDTO;
 import com.lostfound.dto.UpdateProfileDTO;
+import com.lostfound.dto.WxLoginDTO;
 import com.lostfound.entity.User;
 import com.lostfound.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class AuthService {
     private final UserMapper userMapper;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
+    private final WxAuthService wxAuthService;
 
     public Map<String, Object> register(RegisterDTO dto) {
         Long count = userMapper.selectCount(new QueryWrapper<User>().eq("username", dto.getUsername()));
@@ -47,6 +49,39 @@ public class AuthService {
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", dto.getUsername()));
         if (user == null || !passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
             throw new BusinessException("用户名或密码错误");
+        }
+        if (user.getStatus() == 0) {
+            throw new BusinessException(403, "账号已被禁用，请联系管理员");
+        }
+        String token = jwtUtil.createToken(user.getId(), user.getRole());
+        Map<String, Object> map = new HashMap<>();
+        map.put("token", token);
+        map.put("user", user);
+        return map;
+    }
+
+    /**
+     * 微信小程序登录：code 换 openid，存在则登录，不存在则自动注册
+     */
+    public Map<String, Object> wxLogin(WxLoginDTO dto) {
+        String openid = wxAuthService.code2Openid(dto.getCode());
+        User user = userMapper.selectOne(new QueryWrapper<User>().eq("openid", openid));
+        if (user == null) {
+            user = new User();
+            // 生成唯一用户名与随机密码，保证微信用户也兼容账号密码体系
+            String username = "wx_" + openid.substring(Math.max(0, openid.length() - 12)).toLowerCase();
+            if (userMapper.selectCount(new QueryWrapper<User>().eq("username", username)) > 0) {
+                username = username + "_" + System.currentTimeMillis();
+            }
+            user.setUsername(username);
+            user.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+            user.setNickname("微信用户" + openid.substring(Math.max(0, openid.length() - 6)));
+            user.setOpenid(openid);
+            user.setRole("USER");
+            user.setStatus(1);
+            user.setCreateTime(LocalDateTime.now());
+            user.setUpdateTime(LocalDateTime.now());
+            userMapper.insert(user);
         }
         if (user.getStatus() == 0) {
             throw new BusinessException(403, "账号已被禁用，请联系管理员");

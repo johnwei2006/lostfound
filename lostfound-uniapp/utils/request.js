@@ -1,8 +1,9 @@
 /**
  * 网络请求封装
- * BASE_URL：开发环境指向本地后端；小程序真机调试需改为局域网 IP 或线上域名
+ * BASE_URL：线上后端 HTTPS 域名（需在微信公众平台配置为 request/uploadFile 合法域名）
+ * 本地调试时可临时改回 http://localhost:8080 并关闭 urlCheck
  */
-export const BASE_URL = 'http://localhost:8080'
+export const BASE_URL = 'https://www.globalfinding.com'
 
 const request = (options) => {
   return new Promise((resolve, reject) => {

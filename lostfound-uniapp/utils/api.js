@@ -4,6 +4,7 @@ import request from './request'
 export const authApi = {
   login: (data) => request({ url: '/api/auth/login', method: 'POST', data }),
   register: (data) => request({ url: '/api/auth/register', method: 'POST', data }),
+  wxLogin: (data) => request({ url: '/api/auth/wx-login', method: 'POST', data }),
   me: () => request({ url: '/api/auth/me' }),
   updateProfile: (data) => request({ url: '/api/auth/profile', method: 'PUT', data }),
 }

@@ -1,0 +1,30 @@
+# 构建产物
+target/
+dist/
+unpackage/
+node_modules/
+.vite/
+*.class
+*.jar
+*.log
+
+# 本地环境与密钥（严禁入库）
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+application-local.yml
+.tmp-env-*
+uploads/
+
+# 微信开发者工具个人配置
+project.private.config.json
+project.config.json
+
+# IDE / Agent 本地数据
+.idea/
+.vscode/
+*.iml
+.DS_Store
+.codebuddy/

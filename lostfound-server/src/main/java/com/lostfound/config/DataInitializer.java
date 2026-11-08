@@ -1,5 +1,6 @@
 package com.lostfound.config;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.lostfound.entity.User;
 import com.lostfound.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +30,8 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        if (userMapper.selectCount(null) == 0) {
+        // 存量库已有大量用户时同样需要保证管理员存在，故按用户名判断而非全表为空
+        if (userMapper.selectCount(new QueryWrapper<User>().eq("username", "admin")) == 0) {
             User admin = new User();
             admin.setUsername("admin");
             admin.setPassword(passwordEncoder().encode("admin123"));

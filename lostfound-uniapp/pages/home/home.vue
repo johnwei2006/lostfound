@@ -22,12 +22,12 @@
     <scroll-view scroll-x class="cate-scroll">
       <view
         v-for="c in categories"
-        :key="c"
+        :key="c.value"
         class="cate-item"
-        :class="{ active: category === c }"
-        @tap="selectCategory(c)"
+        :class="{ active: category === c.value }"
+        @tap="selectCategory(c.value)"
       >
-        {{ c }}
+        {{ c.label }}
       </view>
     </scroll-view>
 
@@ -56,7 +56,7 @@ const list = ref([])
 const page = ref(1)
 const finished = ref(false)
 const loading = ref(false)
-const categories = ['', ...CATEGORIES]
+const categories = [{ label: '全部', value: '' }, ...CATEGORIES.map((c) => ({ label: c, value: c }))]
 
 const load = async (reset = false) => {
   if (loading.value) return
@@ -150,7 +150,9 @@ onReachBottom(() => {
   font-weight: 600;
 }
 .cate-scroll {
+  width: 100%;
   white-space: nowrap;
+  overflow: hidden;
   margin-bottom: 20rpx;
 }
 .cate-item {

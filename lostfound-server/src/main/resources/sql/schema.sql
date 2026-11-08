@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS `user` (
     `avatar`      VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
     `phone`       VARCHAR(20)  DEFAULT NULL COMMENT '手机号',
     `email`       VARCHAR(100) DEFAULT NULL COMMENT '邮箱',
+    `openid`      VARCHAR(64)  DEFAULT NULL COMMENT '微信小程序openid',
     `role`        VARCHAR(20)  NOT NULL DEFAULT 'USER' COMMENT '角色：USER-普通用户 / ADMIN-管理员',
     `status`      TINYINT      NOT NULL DEFAULT 1 COMMENT '状态：1-正常 / 0-禁用',
     `deleted`     TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除',
@@ -26,8 +27,13 @@ CREATE TABLE IF NOT EXISTS `user` (
     `update_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_username` (`username`),
+    UNIQUE KEY `uk_openid` (`openid`),
     KEY `idx_phone` (`phone`)
 ) ENGINE = InnoDB COMMENT ='用户表';
+
+-- 已有库升级：为 user 表补充微信登录字段（新库可忽略）
+-- ALTER TABLE `user` ADD COLUMN `openid` VARCHAR(64) DEFAULT NULL COMMENT '微信小程序openid' AFTER `email`;
+-- ALTER TABLE `user` ADD UNIQUE KEY `uk_openid` (`openid`);
 
 -- ---------------------------------------------------------------------
 -- 拾物表（捡到物品发布的招领信息，对应旧表 found）

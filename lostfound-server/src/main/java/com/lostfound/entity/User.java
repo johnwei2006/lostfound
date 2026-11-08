@@ -25,6 +25,8 @@ public class User {
     private String avatar;
     private String phone;
     private String email;
+    /** 微信小程序 openid（微信登录用户唯一标识） */
+    private String openid;
     private String role;
     private Integer status;
     private Integer deleted;

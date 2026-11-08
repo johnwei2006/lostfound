@@ -1,5 +1,7 @@
 server:
   port: 8080
+  # 生产环境通过 SERVER_ADDRESS=127.0.0.1 限制为仅本机，由 Nginx 反代；默认全网卡便于本地调试
+  address: ${SERVER_ADDRESS:0.0.0.0}
   servlet:
     encoding:
       charset: UTF-8
@@ -38,6 +40,11 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 lostfound:
+  wechat:
+    # 微信小程序凭证：AppSecret 只通过环境变量注入，严禁写入代码仓库
+    # 本地调试需自行设置 WX_SECRET（或配置 application-local.yml 并加入 .gitignore）
+    appid: ${WX_APPID:wxb45bbe07cf07250c}
+    secret: ${WX_SECRET:}
   jwt:
     # 生产环境务必通过环境变量注入
     secret: ${JWT_SECRET:LostFound-JWT-Secret-256bit-Key-Please-Change-In-Production!!}

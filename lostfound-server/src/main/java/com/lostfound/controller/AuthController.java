@@ -7,6 +7,7 @@ import com.lostfound.dto.ChangePasswordDTO;
 import com.lostfound.dto.LoginDTO;
 import com.lostfound.dto.RegisterDTO;
 import com.lostfound.dto.UpdateProfileDTO;
+import com.lostfound.dto.WxLoginDTO;
 import com.lostfound.entity.User;
 import com.lostfound.service.AuthService;
 import com.lostfound.service.LogService;
@@ -36,6 +37,16 @@ public class AuthController {
     public Result<Map<String, Object>> login(@Valid @RequestBody LoginDTO dto, HttpServletRequest request) {
         Map<String, Object> data = authService.login(dto);
         logService.record(((User) data.get("user")).getId(), "LOGIN", dto.getUsername(), request.getRemoteAddr());
+        return Result.ok(data);
+    }
+
+    /**
+     * 微信小程序登录（wx.login 的 code 换 token）
+     */
+    @PostMapping("/wx-login")
+    public Result<Map<String, Object>> wxLogin(@Valid @RequestBody WxLoginDTO dto, HttpServletRequest request) {
+        Map<String, Object> data = authService.wxLogin(dto);
+        logService.record(((User) data.get("user")).getId(), "WX_LOGIN", "weixin", request.getRemoteAddr());
         return Result.ok(data);
     }
 

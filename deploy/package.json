@@ -1,0 +1,18 @@
+{
+  "name": "lostfound-deploy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "基于 ssh2 的非交互部署脚本（仅本地运行，不部署到服务器）",
+  "scripts": {
+    "survey": "node remote-deploy.js survey",
+    "setup": "node remote-deploy.js install",
+    "backend": "node remote-deploy.js backend",
+    "web": "node remote-deploy.js web",
+    "images": "node normalize-images.js",
+    "deploy": "node remote-deploy.js all"
+  },
+  "dependencies": {
+    "mysql2": "^3.11.0",
+    "ssh2": "^1.16.0"
+  }
+}

@@ -1,0 +1,21 @@
+[Unit]
+Description=LostFound Spring Boot Backend
+Documentation=https://www.globalfinding.com
+After=network.target mysqld.service
+Wants=mysqld.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/lostfound
+EnvironmentFile=/etc/lostfound/lostfound.env
+ExecStart=/usr/bin/java -Xms128m -Xmx384m -XX:+UseG1GC -jar /opt/lostfound/lostfound-server.jar --server.address=${SERVER_ADDRESS}
+Restart=always
+RestartSec=10
+SuccessExitStatus=143
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lostfound
+
+[Install]
+WantedBy=multi-user.target
