@@ -9,7 +9,7 @@ import lombok.Data;
 public class QrTicketVO {
 
     private String ticket;
-    /** 小程序码：data:image/png;base64,... 形式，Web 无需额外二维码库 */
+    /** 小程序码：按实际格式生成的 data:image/(jpeg|png);base64,...，Web 无需额外二维码库 */
     private String qrCode;
     /** 票据有效秒数 */
     private long expiresIn;

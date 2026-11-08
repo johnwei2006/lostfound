@@ -167,7 +167,13 @@ public class WxAuthService {
                 if (errcode == 40001 || errcode == 42001) invalidateAccessToken();
                 throw new BusinessException("生成小程序码失败：" + node.path("errmsg").asText("请稍后重试"));
             }
-            return "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes);
+            // 微信实际返回 JPEG（/9j/..），少数场景返回 PNG；按文件头声明 MIME，避免浏览器拒绝解码
+            String mime = "image/jpeg";
+            if (bytes.length >= 4 && (bytes[0] & 0xFF) == 0x89 && bytes[1] == 0x50
+                    && bytes[2] == 0x4E && bytes[3] == 0x47) {
+                mime = "image/png";
+            }
+            return "data:" + mime + ";base64," + Base64.getEncoder().encodeToString(bytes);
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
