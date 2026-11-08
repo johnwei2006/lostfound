@@ -18,6 +18,9 @@
       <view class="tab" :class="{ active: mode === 'lost' }" @tap="switchMode('lost')">寻物启事</view>
     </view>
 
+    <!-- 当前位置：自动定位 / 地图选点 / 恢复 -->
+    <location-bar />
+
     <!-- 排序切换：默认距离最近，可切换为发布时间最近 -->
     <view class="sort-bar">
       <text class="sort-label">排序</text>
@@ -53,35 +56,39 @@
 
 <script setup>
 import { ref } from 'vue'
-import { onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
+import { onPullDownRefresh, onReachBottom, onShow, onUnload } from '@dcloudio/uni-app'
 import { itemApi, CATEGORIES } from '@/utils/api'
-import { ensureLocation, getCachedLocation } from '@/utils/location'
+import { getCurrentLocation, subscribeLocation } from '@/utils/location'
 
 const keyword = ref('')
 const mode = ref('found')
 const category = ref('')
-const sort = ref('distance')
-const location = ref(getCachedLocation())
+// 定位不可用时先按时间排序；自动定位 / 手动选点完成后再由位置广播恢复距离排序
+const sort = ref(getCurrentLocation().available ? 'distance' : 'time')
+/** 用户主动切换过排序后，不再因位置变化自动改动其选择 */
+const sortTouched = ref(false)
 const list = ref([])
 const page = ref(1)
 const finished = ref(false)
 const loading = ref(false)
 const categories = [{ label: '全部', value: '' }, ...CATEGORIES.map((c) => ({ label: c, value: c }))]
+/** 请求序号：位置切换等新请求发出后，丢弃仍在飞行的旧响应，避免列表回滚 */
+let requestSeq = 0
 
 const load = async (reset = false) => {
-  if (loading.value) return
+  const seq = ++requestSeq
+  // reset 由位置变化 / 筛选触发，必须能打断旧请求；仅触底翻页需要防重复
   if (reset) {
     page.value = 1
     finished.value = false
     list.value = []
+  } else if (loading.value) {
+    return
   }
   loading.value = true
   try {
-    // 与 App.onLaunch 共用同一次定位结果；定位不可用时自动回退时间排序
-    const loc = await ensureLocation()
-    location.value = loc
-    if (!loc.available && sort.value === 'distance') sort.value = 'time'
-
+    // 统一读取位置（手动选点 > 自动定位 > 默认城市）
+    const loc = getCurrentLocation()
     const query = {
       page: page.value,
       size: 10,
@@ -94,21 +101,25 @@ const load = async (reset = false) => {
       query.userLng = loc.longitude
     }
     const data = await itemApi.page(mode.value, query)
+    if (seq !== requestSeq) return
     list.value = reset ? data.records : list.value.concat(data.records)
     finished.value = list.value.length >= data.total
   } catch (e) {
-    console.error(e)
+    if (seq === requestSeq) console.error(e)
   } finally {
-    loading.value = false
-    uni.stopPullDownRefresh()
+    if (seq === requestSeq) {
+      loading.value = false
+      uni.stopPullDownRefresh()
+    }
   }
 }
 
 const switchSort = (s) => {
-  if (s === 'distance' && !location.value.available) {
+  if (s === 'distance' && !getCurrentLocation().available) {
     return uni.showToast({ title: '未获取到位置，已按时间排序', icon: 'none' })
   }
   if (sort.value === s) return
+  sortTouched.value = true
   sort.value = s
   load(true)
 }
@@ -125,14 +136,22 @@ const goSearch = () => load(true)
 const goPublish = () => uni.switchTab({ url: '/pages/publish/publish' })
 const goMap = () => uni.navigateTo({ url: '/pages/map/map' })
 
+// 选点 / 恢复 / 自动定位完成后，重置分页并按新坐标重排；用户主动选过排序则尊重其选择
+const unsubscribe = subscribeLocation((next) => {
+  const loc = next || getCurrentLocation()
+  if (!sortTouched.value) sort.value = loc.available ? 'distance' : 'time'
+  load(true)
+})
+
 onShow(() => load(true))
 onPullDownRefresh(() => load(true))
 onReachBottom(() => {
-  if (!finished.value) {
+  if (!finished.value && !loading.value) {
     page.value++
     load()
   }
 })
+onUnload(() => unsubscribe())
 </script>
 
 <style scoped>

@@ -14,7 +14,7 @@
       @markertap="onMarkerTap"
     />
 
-    <view class="locate-btn" @tap="relocate">{{ located ? '回到当前位置' : '重新定位' }}</view>
+    <view class="locate-btn" @tap="relocate">{{ manual ? '恢复当前位置' : '重新定位' }}</view>
 
     <!-- 底部信息卡 -->
     <view class="info-card lf-card" v-if="active" @tap="goDetail">
@@ -32,36 +32,36 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onUnload } from '@dcloudio/uni-app'
 import { itemApi } from '@/utils/api'
-import { ensureLocation, getCachedLocation, refreshLocation } from '@/utils/location'
+import { getCurrentLocation, refreshLocation, subscribeLocation } from '@/utils/location'
 
 const mode = ref('found')
 const items = ref([])
 const active = ref(null)
 
-// 默认以启动时获取到的当前位置为中心；点击标记或重新定位时再更新中心点
-const cached = getCachedLocation()
-const centerLat = ref(cached.latitude)
-const centerLng = ref(cached.longitude)
-const located = ref(cached.available)
+// 以当前生效位置（含手动选点）为中心；点击标记或位置变化时再更新中心点
+const initial = getCurrentLocation()
+const centerLat = ref(initial.latitude)
+const centerLng = ref(initial.longitude)
+const located = ref(initial.available)
+const manual = ref(initial.source === 'manual')
 
-const applyCurrentLocation = async () => {
-  const loc = await ensureLocation()
+const applyCurrentLocation = () => {
+  const loc = getCurrentLocation()
   centerLat.value = loc.latitude
   centerLng.value = loc.longitude
   located.value = loc.available
+  manual.value = loc.source === 'manual'
+  active.value = null
 }
 
-const relocate = async () => {
-  const loc = await refreshLocation()
-  centerLat.value = loc.latitude
-  centerLng.value = loc.longitude
-  located.value = loc.available
-  active.value = null
-  uni.showToast({
-    title: loc.available ? '已定位到当前位置' : '定位不可用，显示默认位置',
-    icon: 'none',
+const relocate = () => {
+  refreshLocation().then((loc) => {
+    uni.showToast({
+      title: loc.available ? '已恢复当前位置' : '定位不可用，显示默认位置',
+      icon: 'none',
+    })
   })
 }
 
@@ -107,9 +107,16 @@ const goDetail = () => {
   uni.navigateTo({ url: `/pages/detail/detail?type=${mode.value}&id=${active.value.id}` })
 }
 
+let unsubscribe = null
+
 onLoad(() => {
   applyCurrentLocation()
+  unsubscribe = subscribeLocation(() => applyCurrentLocation())
   load()
+})
+
+onUnload(() => {
+  if (unsubscribe) unsubscribe()
 })
 </script>
 
