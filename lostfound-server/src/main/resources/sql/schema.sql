@@ -1,0 +1,255 @@
+-- =====================================================================
+-- 失物招领平台 数据库建表脚本（MySQL 8.0+）
+-- 参考：Lostfound_backend/lostfound.sql（旧系统 11 张表）与 16 个 hbm.xml 实体
+-- 重设计：补全 message/feedback/foundsite_manager/claim 缺失表，演示数据已脱敏
+-- =====================================================================
+
+CREATE DATABASE IF NOT EXISTS `lostfound`
+    DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE `lostfound`;
+
+-- ---------------------------------------------------------------------
+-- 用户表
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `user` (
+    `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `username`    VARCHAR(50)  NOT NULL COMMENT '登录名',
+    `password`    VARCHAR(100) NOT NULL COMMENT '密码（BCrypt）',
+    `nickname`    VARCHAR(50)  DEFAULT NULL COMMENT '昵称',
+    `avatar`      VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
+    `phone`       VARCHAR(20)  DEFAULT NULL COMMENT '手机号',
+    `email`       VARCHAR(100) DEFAULT NULL COMMENT '邮箱',
+    `role`        VARCHAR(20)  NOT NULL DEFAULT 'USER' COMMENT '角色：USER-普通用户 / ADMIN-管理员',
+    `status`      TINYINT      NOT NULL DEFAULT 1 COMMENT '状态：1-正常 / 0-禁用',
+    `deleted`     TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_username` (`username`),
+    KEY `idx_phone` (`phone`)
+) ENGINE = InnoDB COMMENT ='用户表';
+
+-- ---------------------------------------------------------------------
+-- 拾物表（捡到物品发布的招领信息，对应旧表 found）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `found` (
+    `id`            BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `user_id`       BIGINT        NOT NULL COMMENT '发布人ID',
+    `site_id`       BIGINT        DEFAULT NULL COMMENT '所属招领站ID',
+    `title`         VARCHAR(100)  NOT NULL COMMENT '物品名称',
+    `category`      VARCHAR(30)   NOT NULL COMMENT '类别：证件/钥匙/手机/电子产品/钱包/书籍/衣物/其他',
+    `description`   VARCHAR(2000) DEFAULT NULL COMMENT '物品描述',
+    `images`        JSON          DEFAULT NULL COMMENT '图片URL数组',
+    `province`      VARCHAR(30)   DEFAULT NULL COMMENT '省',
+    `city`          VARCHAR(30)   DEFAULT NULL COMMENT '市',
+    `district`      VARCHAR(30)   DEFAULT NULL COMMENT '区',
+    `address`       VARCHAR(200)  DEFAULT NULL COMMENT '详细地点',
+    `longitude`     DECIMAL(10,6) DEFAULT NULL COMMENT '经度',
+    `latitude`      DECIMAL(10,6) DEFAULT NULL COMMENT '纬度',
+    `found_time`    DATETIME      DEFAULT NULL COMMENT '拾获时间',
+    `contact`       VARCHAR(100)  DEFAULT NULL COMMENT '联系方式',
+    `status`        VARCHAR(20)   NOT NULL DEFAULT 'WAITING' COMMENT '状态：WAITING-待认领 / CLAIMED-已认领 / FINISHED-已完成 / OFFLINE-已下架',
+    `review_status` VARCHAR(20)   NOT NULL DEFAULT 'APPROVED' COMMENT '审核状态：PENDING / APPROVED / REJECTED',
+    `view_count`    INT           NOT NULL DEFAULT 0 COMMENT '浏览量',
+    `deleted`       TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    `create_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_category` (`category`),
+    KEY `idx_status` (`status`),
+    KEY `idx_city` (`city`),
+    KEY `idx_user` (`user_id`),
+    KEY `idx_site` (`site_id`),
+    KEY `idx_create_time` (`create_time`),
+    FULLTEXT KEY `ft_title_desc` (`title`, `description`) WITH PARSER ngram
+) ENGINE = InnoDB COMMENT ='拾物表';
+
+-- ---------------------------------------------------------------------
+-- 失物表（丢失物品发布的寻物启事，对应旧表 lost）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `lost` (
+    `id`            BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `user_id`       BIGINT        NOT NULL COMMENT '发布人ID',
+    `title`         VARCHAR(100)  NOT NULL COMMENT '物品名称',
+    `category`      VARCHAR(30)   NOT NULL COMMENT '类别',
+    `description`   VARCHAR(2000) DEFAULT NULL COMMENT '物品描述',
+    `images`        JSON          DEFAULT NULL COMMENT '图片URL数组',
+    `province`      VARCHAR(30)   DEFAULT NULL COMMENT '省',
+    `city`          VARCHAR(30)   DEFAULT NULL COMMENT '市',
+    `district`      VARCHAR(30)   DEFAULT NULL COMMENT '区',
+    `address`       VARCHAR(200)  DEFAULT NULL COMMENT '丢失地点',
+    `longitude`     DECIMAL(10,6) DEFAULT NULL COMMENT '经度',
+    `latitude`      DECIMAL(10,6) DEFAULT NULL COMMENT '纬度',
+    `lost_time`     DATETIME      DEFAULT NULL COMMENT '丢失时间',
+    `contact`       VARCHAR(100)  DEFAULT NULL COMMENT '联系方式',
+    `status`        VARCHAR(20)   NOT NULL DEFAULT 'WAITING' COMMENT '状态：WAITING-寻找中 / CLAIMED-待确认 / FINISHED-已找回 / OFFLINE-已下架',
+    `review_status` VARCHAR(20)   NOT NULL DEFAULT 'APPROVED' COMMENT '审核状态：PENDING / APPROVED / REJECTED',
+    `view_count`    INT           NOT NULL DEFAULT 0 COMMENT '浏览量',
+    `deleted`       TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    `create_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_category` (`category`),
+    KEY `idx_status` (`status`),
+    KEY `idx_city` (`city`),
+    KEY `idx_user` (`user_id`),
+    KEY `idx_create_time` (`create_time`),
+    FULLTEXT KEY `ft_title_desc` (`title`, `description`) WITH PARSER ngram
+) ENGINE = InnoDB COMMENT ='失物表';
+
+-- ---------------------------------------------------------------------
+-- 招领站表（对应旧表 foundsite）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `foundsite` (
+    `id`          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `name`        VARCHAR(100)  NOT NULL COMMENT '站点名称',
+    `address`     VARCHAR(200)  NOT NULL COMMENT '站点地址',
+    `longitude`   DECIMAL(10,6) DEFAULT NULL COMMENT '经度',
+    `latitude`    DECIMAL(10,6) DEFAULT NULL COMMENT '纬度',
+    `phone`       VARCHAR(20)   DEFAULT NULL COMMENT '联系电话',
+    `open_time`   VARCHAR(100)  DEFAULT NULL COMMENT '开放时间',
+    `description` VARCHAR(1000) DEFAULT NULL COMMENT '站点简介',
+    `deleted`     TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    `create_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_name` (`name`)
+) ENGINE = InnoDB COMMENT ='招领站表';
+
+-- ---------------------------------------------------------------------
+-- 招领站管理员表（对应旧实体 FoundSiteManager，旧 SQL 缺失，补全）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `foundsite_manager` (
+    `id`          BIGINT   NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `site_id`     BIGINT   NOT NULL COMMENT '招领站ID',
+    `user_id`     BIGINT   NOT NULL COMMENT '管理员用户ID',
+    `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_site_user` (`site_id`, `user_id`)
+) ENGINE = InnoDB COMMENT ='招领站管理员表';
+
+-- ---------------------------------------------------------------------
+-- 拾物评论表（对应旧表 foundcomments）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `found_comment` (
+    `id`          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `item_id`     BIGINT        NOT NULL COMMENT '拾物ID',
+    `user_id`     BIGINT        NOT NULL COMMENT '评论人ID',
+    `parent_id`   BIGINT        DEFAULT NULL COMMENT '父评论ID（楼中楼）',
+    `content`     VARCHAR(1000) NOT NULL COMMENT '评论内容',
+    `deleted`     TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    `create_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_item` (`item_id`),
+    KEY `idx_user` (`user_id`)
+) ENGINE = InnoDB COMMENT ='拾物评论表';
+
+-- ---------------------------------------------------------------------
+-- 失物评论表（对应旧表 lostcomments）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `lost_comment` (
+    `id`          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `item_id`     BIGINT        NOT NULL COMMENT '失物ID',
+    `user_id`     BIGINT        NOT NULL COMMENT '评论人ID',
+    `parent_id`   BIGINT        DEFAULT NULL COMMENT '父评论ID',
+    `content`     VARCHAR(1000) NOT NULL COMMENT '评论内容',
+    `deleted`     TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    `create_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_item` (`item_id`),
+    KEY `idx_user` (`user_id`)
+) ENGINE = InnoDB COMMENT ='失物评论表';
+
+-- ---------------------------------------------------------------------
+-- 拾物关注/收藏表（对应旧表 myfoundfocus）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `found_focus` (
+    `id`          BIGINT   NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `item_id`     BIGINT   NOT NULL COMMENT '拾物ID',
+    `user_id`     BIGINT   NOT NULL COMMENT '关注人ID',
+    `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_item_user` (`item_id`, `user_id`),
+    KEY `idx_user` (`user_id`)
+) ENGINE = InnoDB COMMENT ='拾物关注表';
+
+-- ---------------------------------------------------------------------
+-- 失物关注/收藏表（对应旧表 mylostfocus）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `lost_focus` (
+    `id`          BIGINT   NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `item_id`     BIGINT   NOT NULL COMMENT '失物ID',
+    `user_id`     BIGINT   NOT NULL COMMENT '关注人ID',
+    `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_item_user` (`item_id`, `user_id`),
+    KEY `idx_user` (`user_id`)
+) ENGINE = InnoDB COMMENT ='失物关注表';
+
+-- ---------------------------------------------------------------------
+-- 认领申请表（认领流转核心，旧系统由 OrderRequest 实体承载，重设计）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `claim_request` (
+    `id`          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `item_type`   VARCHAR(10)   NOT NULL COMMENT '物品类型：FOUND / LOST',
+    `item_id`     BIGINT        NOT NULL COMMENT '物品ID',
+    `user_id`     BIGINT        NOT NULL COMMENT '申请人ID',
+    `description` VARCHAR(1000) NOT NULL COMMENT '认领凭证描述（需描述丢失细节）',
+    `contact`     VARCHAR(100)  DEFAULT NULL COMMENT '联系方式',
+    `status`      VARCHAR(20)   NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING-待处理 / APPROVED-已通过 / REJECTED-已拒绝',
+    `create_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_item` (`item_type`, `item_id`),
+    KEY `idx_user` (`user_id`),
+    KEY `idx_status` (`status`)
+) ENGINE = InnoDB COMMENT ='认领申请表';
+
+-- ---------------------------------------------------------------------
+-- 智能匹配记录表（对应旧表 match，重设计）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `match_record` (
+    `id`          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `found_id`    BIGINT        NOT NULL COMMENT '拾物ID',
+    `lost_id`     BIGINT        NOT NULL COMMENT '失物ID',
+    `score`       DECIMAL(5,2)  NOT NULL COMMENT '匹配得分（0-100）',
+    `reason`      VARCHAR(500)  DEFAULT NULL COMMENT '匹配原因说明',
+    `status`      VARCHAR(20)   NOT NULL DEFAULT 'UNREAD' COMMENT '状态：UNREAD-未读 / ACCEPTED-已采纳 / IGNORED-已忽略',
+    `create_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_found` (`found_id`),
+    KEY `idx_lost` (`lost_id`),
+    UNIQUE KEY `uk_found_lost` (`found_id`, `lost_id`)
+) ENGINE = InnoDB COMMENT ='失物拾物匹配记录表';
+
+-- ---------------------------------------------------------------------
+-- 站内消息表（对应旧实体 Message，旧 SQL 缺失，补全）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `message` (
+    `id`          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `user_id`     BIGINT        NOT NULL COMMENT '接收用户ID',
+    `title`       VARCHAR(100)  NOT NULL COMMENT '消息标题',
+    `content`     VARCHAR(1000) DEFAULT NULL COMMENT '消息内容',
+    `type`        VARCHAR(20)   NOT NULL DEFAULT 'SYSTEM' COMMENT '类型：MATCH-匹配推荐 / CLAIM-认领动态 / SYSTEM-系统通知',
+    `related_id`  BIGINT        DEFAULT NULL COMMENT '关联ID（匹配记录/申请/物品）',
+    `is_read`     TINYINT       NOT NULL DEFAULT 0 COMMENT '是否已读：0-未读 / 1-已读',
+    `deleted`     TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    `create_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_user_read` (`user_id`, `is_read`)
+) ENGINE = InnoDB COMMENT ='站内消息表';
+
+-- ---------------------------------------------------------------------
+-- 操作日志表（对应旧表 operatelog）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `operate_log` (
+    `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `user_id`     BIGINT       DEFAULT NULL COMMENT '操作人ID',
+    `action`      VARCHAR(50)  NOT NULL COMMENT '动作：LOGIN/PUBLISH/CLAIM/APPROVE等',
+    `detail`      VARCHAR(500) DEFAULT NULL COMMENT '详情',
+    `ip`          VARCHAR(50)  DEFAULT NULL COMMENT '操作IP',
+    `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_user` (`user_id`),
+    KEY `idx_create_time` (`create_time`)
+) ENGINE = InnoDB COMMENT ='操作日志表';

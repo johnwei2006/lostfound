@@ -1,0 +1,449 @@
+package com.lostfound.service;
+
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lostfound.common.BusinessException;
+import com.lostfound.common.PageResult;
+import com.lostfound.dto.ItemQuery;
+import com.lostfound.dto.PublishItemDTO;
+import com.lostfound.entity.*;
+import com.lostfound.mapper.*;
+import com.lostfound.vo.ItemVO;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+/**
+ * 失物/拾物通用业务服务（type = FOUND / LOST）
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class ItemService {
+
+    private final FoundMapper foundMapper;
+    private final LostMapper lostMapper;
+    private final UserMapper userMapper;
+    private final FoundSiteMapper foundSiteMapper;
+    private final FoundFocusMapper foundFocusMapper;
+    private final LostFocusMapper lostFocusMapper;
+    private final FoundCommentMapper foundCommentMapper;
+    private final LostCommentMapper lostCommentMapper;
+    private final MatchService matchService;
+    private final ObjectMapper objectMapper;
+    private final CacheManager cacheManager;
+
+    @Value("${lostfound.review.required:false}")
+    private boolean reviewRequired;
+
+    // ------------------------------------------------------------------
+    // 查询
+    // ------------------------------------------------------------------
+
+    public PageResult<ItemVO> page(String type, ItemQuery q, Long currentUserId) {
+        q.setCurrentUserId(currentUserId);
+        PageResult<ItemVO> result;
+        if ("FOUND".equals(type)) {
+            QueryWrapper<Found> qw = buildQuery(q, reviewRequired);
+            qw.orderByDesc("hot".equals(q.getSort()) ? "view_count" : "create_time");
+            Page<Found> page = foundMapper.selectPage(new Page<>(q.getPage(), q.getSize()), qw);
+            result = new PageResult<>();
+            result.setTotal(page.getTotal());
+            result.setPages(page.getPages());
+            result.setCurrent(page.getCurrent());
+            result.setSize(page.getSize());
+            result.setRecords(convertFound(page.getRecords(), currentUserId));
+        } else {
+            QueryWrapper<Lost> qw = buildQuery(q, reviewRequired);
+            qw.orderByDesc("hot".equals(q.getSort()) ? "view_count" : "create_time");
+            Page<Lost> page = lostMapper.selectPage(new Page<>(q.getPage(), q.getSize()), qw);
+            result = new PageResult<>();
+            result.setTotal(page.getTotal());
+            result.setPages(page.getPages());
+            result.setCurrent(page.getCurrent());
+            result.setSize(page.getSize());
+            result.setRecords(convertLost(page.getRecords(), currentUserId));
+        }
+        return result;
+    }
+
+    private <T> QueryWrapper<T> buildQuery(ItemQuery q, boolean reviewRequired) {
+        QueryWrapper<T> qw = new QueryWrapper<>();
+        if (q.getKeyword() != null && !q.getKeyword().isBlank()) {
+            qw.and(w -> w.like("title", q.getKeyword()).or().like("description", q.getKeyword()));
+        }
+        if (q.getCategory() != null && !q.getCategory().isBlank()) {
+            qw.eq("category", q.getCategory());
+        }
+        if (q.getCity() != null && !q.getCity().isBlank()) {
+            qw.eq("city", q.getCity());
+        }
+        if (q.getStatus() != null && !q.getStatus().isBlank()) {
+            qw.eq("status", q.getStatus());
+        } else {
+            qw.ne("status", "OFFLINE");
+        }
+        if (q.getDays() != null && q.getDays() > 0) {
+            qw.ge("create_time", LocalDateTime.now().minusDays(q.getDays()));
+        }
+        if (q.getSiteId() != null) {
+            qw.eq("site_id", q.getSiteId());
+        }
+        if (Boolean.TRUE.equals(q.getMine()) && q.getCurrentUserId() != null) {
+            qw.eq("user_id", q.getCurrentUserId());
+        } else if (reviewRequired) {
+            qw.eq("review_status", "APPROVED");
+        }
+        return qw;
+    }
+
+    public ItemVO detail(String type, Long id, Long currentUserId) {
+        ItemVO vo;
+        if ("FOUND".equals(type)) {
+            foundMapper.incrementView(id);
+            Found found = foundMapper.selectById(id);
+            if (found == null) throw new BusinessException("信息不存在");
+            vo = convertFound(List.of(found), currentUserId).get(0);
+        } else {
+            lostMapper.incrementView(id);
+            Lost lost = lostMapper.selectById(id);
+            if (lost == null) throw new BusinessException("信息不存在");
+            vo = convertLost(List.of(lost), currentUserId).get(0);
+        }
+        // 非本人且未过审，仅发布者与管理员可见
+        if (!"APPROVED".equals(vo.getReviewStatus())
+                && !Objects.equals(vo.getUserId(), currentUserId)
+                && !"ADMIN".equals(roleOf(currentUserId))) {
+            throw new BusinessException("信息审核中，暂不可见");
+        }
+        return vo;
+    }
+
+    public PageResult<ItemVO> mine(String type, Long userId, long page, long size) {
+        ItemQuery q = new ItemQuery();
+        q.setPage(page);
+        q.setSize(size);
+        q.setMine(true);
+        return page(type, q, userId);
+    }
+
+    /** 首页最新物品（缓存 5 分钟，不含个人关注态） */
+    @Cacheable(cacheNames = "latestItems", key = "#type + ':' + #limit")
+    public List<ItemVO> latest(String type, int limit, Long currentUserId) {
+        ItemQuery q = new ItemQuery();
+        q.setSize(limit);
+        q.setPage(1);
+        // 缓存公共数据，不携带个人关注态
+        return page(type, q, null).getRecords();
+    }
+
+    // ------------------------------------------------------------------
+    // 发布 / 编辑 / 删除
+    // ------------------------------------------------------------------
+
+    public Long publish(String type, Long userId, PublishItemDTO dto) {
+        Long id;
+        if ("FOUND".equals(type)) {
+            Found f = new Found();
+            applyDto(f, dto);
+            f.setUserId(userId);
+            f.setFoundTime(dto.getItemTime());
+            f.setStatus(Found.STATUS_WAITING);
+            f.setReviewStatus(reviewRequired ? "PENDING" : "APPROVED");
+            f.setViewCount(0);
+            foundMapper.insert(f);
+            id = f.getId();
+            matchService.triggerOnFound(f);
+        } else {
+            Lost l = new Lost();
+            applyDto(l, dto);
+            l.setUserId(userId);
+            l.setLostTime(dto.getItemTime());
+            l.setStatus(Lost.STATUS_WAITING);
+            l.setReviewStatus(reviewRequired ? "PENDING" : "APPROVED");
+            l.setViewCount(0);
+            lostMapper.insert(l);
+            id = l.getId();
+            matchService.triggerOnLost(l);
+        }
+        evictLatest();
+        return id;
+    }
+
+    public void update(String type, Long id, Long userId, PublishItemDTO dto) {
+        if ("FOUND".equals(type)) {
+            Found f = requireFound(id);
+            checkOwner(f.getUserId(), userId);
+            applyDto(f, dto);
+            f.setFoundTime(dto.getItemTime());
+            foundMapper.updateById(f);
+        } else {
+            Lost l = requireLost(id);
+            checkOwner(l.getUserId(), userId);
+            applyDto(l, dto);
+            l.setLostTime(dto.getItemTime());
+            lostMapper.updateById(l);
+        }
+        evictLatest();
+    }
+
+    public void delete(String type, Long id, Long userId, boolean isAdmin) {
+        if ("FOUND".equals(type)) {
+            Found f = requireFound(id);
+            checkOwner(f.getUserId(), userId, isAdmin);
+            foundMapper.deleteById(id);
+        } else {
+            Lost l = requireLost(id);
+            checkOwner(l.getUserId(), userId, isAdmin);
+            lostMapper.deleteById(id);
+        }
+        evictLatest();
+    }
+
+    public void changeStatus(String type, Long id, Long userId, boolean isAdmin, String status) {
+        if ("FOUND".equals(type)) {
+            Found f = requireFound(id);
+            checkOwner(f.getUserId(), userId, isAdmin);
+            f.setStatus(status);
+            foundMapper.updateById(f);
+        } else {
+            Lost l = requireLost(id);
+            checkOwner(l.getUserId(), userId, isAdmin);
+            l.setStatus(status);
+            lostMapper.updateById(l);
+        }
+        evictLatest();
+    }
+
+    // ------------------------------------------------------------------
+    // VO 转换
+    // ------------------------------------------------------------------
+
+    private List<ItemVO> convertFound(List<Found> list, Long currentUserId) {
+        if (list.isEmpty()) return List.of();
+        List<Long> ids = list.stream().map(Found::getId).toList();
+        Map<Long, Long> focusCounts = focusCounts(ids, true);
+        Map<Long, Long> commentCounts = commentCounts(ids, true);
+        Set<Long> focusedIds = currentUserId == null ? Set.of() :
+                foundFocusMapper.selectList(new QueryWrapper<FoundFocus>()
+                                .eq("user_id", currentUserId).in("item_id", ids))
+                        .stream().map(FoundFocus::getItemId).collect(Collectors.toSet());
+        Set<Long> userIds = list.stream().map(Found::getUserId).collect(Collectors.toSet());
+        Map<Long, User> users = userMap(userIds);
+        Map<Long, String> siteNames = list.stream().map(Found::getSiteId).filter(Objects::nonNull).distinct()
+                .collect(Collectors.toMap(Function.identity(),
+                        sid -> Optional.ofNullable(foundSiteMapper.selectById(sid)).map(FoundSite::getName).orElse(""),
+                        (a, b) -> a));
+
+        return list.stream().map(f -> {
+            ItemVO vo = new ItemVO();
+            vo.setType("FOUND");
+            vo.setId(f.getId());
+            vo.setUserId(f.getUserId());
+            User u = users.get(f.getUserId());
+            if (u != null) {
+                vo.setNickname(u.getNickname());
+                vo.setAvatar(u.getAvatar());
+            }
+            vo.setSiteId(f.getSiteId());
+            vo.setSiteName(f.getSiteId() == null ? null : siteNames.get(f.getSiteId()));
+            vo.setTitle(f.getTitle());
+            vo.setCategory(f.getCategory());
+            vo.setDescription(f.getDescription());
+            vo.setImages(parseImages(f.getImages()));
+            vo.setProvince(f.getProvince());
+            vo.setCity(f.getCity());
+            vo.setDistrict(f.getDistrict());
+            vo.setAddress(f.getAddress());
+            vo.setLongitude(f.getLongitude());
+            vo.setLatitude(f.getLatitude());
+            vo.setItemTime(f.getFoundTime());
+            vo.setContact(f.getContact());
+            vo.setStatus(f.getStatus());
+            vo.setReviewStatus(f.getReviewStatus());
+            vo.setViewCount(f.getViewCount());
+            vo.setFocusCount(focusCounts.getOrDefault(f.getId(), 0L));
+            vo.setCommentCount(commentCounts.getOrDefault(f.getId(), 0L));
+            vo.setFocused(focusedIds.contains(f.getId()));
+            vo.setCreateTime(f.getCreateTime());
+            vo.setUpdateTime(f.getUpdateTime());
+            return vo;
+        }).collect(Collectors.toList());
+    }
+
+    private List<ItemVO> convertLost(List<Lost> list, Long currentUserId) {
+        if (list.isEmpty()) return List.of();
+        List<Long> ids = list.stream().map(Lost::getId).toList();
+        Map<Long, Long> focusCounts = focusCounts(ids, false);
+        Map<Long, Long> commentCounts = commentCounts(ids, false);
+        Set<Long> focusedIds = currentUserId == null ? Set.of() :
+                lostFocusMapper.selectList(new QueryWrapper<LostFocus>()
+                                .eq("user_id", currentUserId).in("item_id", ids))
+                        .stream().map(LostFocus::getItemId).collect(Collectors.toSet());
+        Map<Long, User> users = userMap(list.stream().map(Lost::getUserId).collect(Collectors.toSet()));
+
+        return list.stream().map(l -> {
+            ItemVO vo = new ItemVO();
+            vo.setType("LOST");
+            vo.setId(l.getId());
+            vo.setUserId(l.getUserId());
+            User u = users.get(l.getUserId());
+            if (u != null) {
+                vo.setNickname(u.getNickname());
+                vo.setAvatar(u.getAvatar());
+            }
+            vo.setTitle(l.getTitle());
+            vo.setCategory(l.getCategory());
+            vo.setDescription(l.getDescription());
+            vo.setImages(parseImages(l.getImages()));
+            vo.setProvince(l.getProvince());
+            vo.setCity(l.getCity());
+            vo.setDistrict(l.getDistrict());
+            vo.setAddress(l.getAddress());
+            vo.setLongitude(l.getLongitude());
+            vo.setLatitude(l.getLatitude());
+            vo.setItemTime(l.getLostTime());
+            vo.setContact(l.getContact());
+            vo.setStatus(l.getStatus());
+            vo.setReviewStatus(l.getReviewStatus());
+            vo.setViewCount(l.getViewCount());
+            vo.setFocusCount(focusCounts.getOrDefault(l.getId(), 0L));
+            vo.setCommentCount(commentCounts.getOrDefault(l.getId(), 0L));
+            vo.setFocused(focusedIds.contains(l.getId()));
+            vo.setCreateTime(l.getCreateTime());
+            vo.setUpdateTime(l.getUpdateTime());
+            return vo;
+        }).collect(Collectors.toList());
+    }
+
+    private Map<Long, User> userMap(Set<Long> userIds) {
+        if (userIds.isEmpty()) return Map.of();
+        return userMapper.selectBatchIds(userIds).stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+    }
+
+    private Map<Long, Long> focusCounts(List<Long> ids, boolean found) {
+        if (ids.isEmpty()) return Map.of();
+        return found ? groupCount(foundFocusMapper, ids) : groupCount(lostFocusMapper, ids);
+    }
+
+    private Map<Long, Long> commentCounts(List<Long> ids, boolean found) {
+        if (ids.isEmpty()) return Map.of();
+        return found ? groupCount(foundCommentMapper, ids) : groupCount(lostCommentMapper, ids);
+    }
+
+    private <T> Map<Long, Long> groupCount(com.baomidou.mybatisplus.core.mapper.BaseMapper<T> mapper, List<Long> ids) {
+        QueryWrapper<T> qw = new QueryWrapper<>();
+        qw.select("item_id", "COUNT(*) AS cnt").in("item_id", ids).groupBy("item_id");
+        Map<Long, Long> map = new HashMap<>();
+        for (Map<String, Object> row : mapper.selectMaps(qw)) {
+            map.put(Long.valueOf(row.get("item_id").toString()), Long.valueOf(row.get("cnt").toString()));
+        }
+        return map;
+    }
+
+    private List<String> parseImages(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {
+            });
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 工具
+    // ------------------------------------------------------------------
+
+    /** 按 ID 批量查询物品（保持入参顺序） */
+    public List<ItemVO> listByIds(String type, List<Long> ids, Long currentUserId) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        if ("FOUND".equals(type)) {
+            return convertFound(foundMapper.selectBatchIds(ids), currentUserId);
+        }
+        return convertLost(lostMapper.selectBatchIds(ids), currentUserId);
+    }
+
+    public Found requireFound(Long id) {
+        Found f = foundMapper.selectById(id);
+        if (f == null) throw new BusinessException("拾物信息不存在");
+        return f;
+    }
+
+    public Lost requireLost(Long id) {
+        Lost l = lostMapper.selectById(id);
+        if (l == null) throw new BusinessException("失物信息不存在");
+        return l;
+    }
+
+    private void checkOwner(Long ownerId, Long userId) {
+        checkOwner(ownerId, userId, false);
+    }
+
+    private void checkOwner(Long ownerId, Long userId, boolean isAdmin) {
+        if (!Objects.equals(ownerId, userId) && !isAdmin) {
+            throw new BusinessException(403, "无权操作他人信息");
+        }
+    }
+
+    private void applyDto(Found f, PublishItemDTO dto) {
+        f.setTitle(dto.getTitle());
+        f.setCategory(dto.getCategory());
+        f.setDescription(dto.getDescription());
+        f.setImages(toJson(dto.getImages()));
+        f.setProvince(dto.getProvince());
+        f.setCity(dto.getCity());
+        f.setDistrict(dto.getDistrict());
+        f.setAddress(dto.getAddress());
+        f.setLongitude(dto.getLongitude());
+        f.setLatitude(dto.getLatitude());
+        f.setContact(dto.getContact());
+        f.setSiteId(dto.getSiteId());
+    }
+
+    private void applyDto(Lost l, PublishItemDTO dto) {
+        l.setTitle(dto.getTitle());
+        l.setCategory(dto.getCategory());
+        l.setDescription(dto.getDescription());
+        l.setImages(toJson(dto.getImages()));
+        l.setProvince(dto.getProvince());
+        l.setCity(dto.getCity());
+        l.setDistrict(dto.getDistrict());
+        l.setAddress(dto.getAddress());
+        l.setLongitude(dto.getLongitude());
+        l.setLatitude(dto.getLatitude());
+        l.setContact(dto.getContact());
+    }
+
+    private String toJson(List<String> images) {
+        if (images == null || images.isEmpty()) return "[]";
+        try {
+            return objectMapper.writeValueAsString(images);
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    private void evictLatest() {
+        Cache cache = cacheManager.getCache("latestItems");
+        if (cache != null) cache.clear();
+    }
+
+    private String roleOf(Long userId) {
+        if (userId == null) return null;
+        User u = userMapper.selectById(userId);
+        return u == null ? null : u.getRole();
+    }
+}

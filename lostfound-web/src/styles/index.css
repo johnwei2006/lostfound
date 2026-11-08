@@ -1,0 +1,154 @@
+/* ============================================================
+   寻物志 · 设计系统
+   信任蓝 + 暖橙点缀 / 清新现代 / 卡片化 / 微交互
+   ============================================================ */
+:root {
+  --lf-primary: #2563eb;
+  --lf-primary-light: #3b82f6;
+  --lf-primary-soft: #eaf1fe;
+  --lf-accent: #f97316;
+  --lf-accent-soft: #fff3e8;
+  --lf-bg: #f5f7fa;
+  --lf-surface: #ffffff;
+  --lf-text: #1f2937;
+  --lf-text-2: #6b7280;
+  --lf-text-3: #9ca3af;
+  --lf-success: #10b981;
+  --lf-danger: #ef4444;
+  --lf-warning: #f59e0b;
+  --lf-border: #e5e9f0;
+  --lf-radius: 14px;
+  --lf-radius-sm: 10px;
+  --lf-shadow-sm: 0 1px 3px rgba(31, 41, 55, 0.06);
+  --lf-shadow-md: 0 6px 20px rgba(37, 99, 235, 0.09);
+  --lf-shadow-lg: 0 14px 38px rgba(31, 41, 55, 0.12);
+  --font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', system-ui, sans-serif;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-family);
+  background: var(--lf-bg);
+  color: var(--lf-text);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ---- 通用卡片 ---- */
+.lf-card {
+  background: var(--lf-surface);
+  border-radius: var(--lf-radius);
+  border: 1px solid var(--lf-border);
+  box-shadow: var(--lf-shadow-sm);
+  transition: transform 0.35s var(--ease-out), box-shadow 0.35s var(--ease-out);
+}
+
+.lf-card--hover:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--lf-shadow-md);
+}
+
+/* ---- 页面容器 ---- */
+.lf-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* ---- 标题 ---- */
+.lf-page-title {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.lf-page-sub {
+  color: var(--lf-text-2);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+/* ---- 状态标签 ---- */
+.lf-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.lf-tag--waiting { background: var(--lf-primary-soft); color: var(--lf-primary); }
+.lf-tag--claimed { background: var(--lf-accent-soft); color: var(--lf-accent); }
+.lf-tag--finished { background: #e7f8f1; color: var(--lf-success); }
+.lf-tag--offline { background: #f3f4f6; color: var(--lf-text-3); }
+
+/* ---- 骨架屏 shimmer ---- */
+.lf-skeleton {
+  background: linear-gradient(90deg, #eef1f6 25%, #f7f9fc 50%, #eef1f6 75%);
+  background-size: 200% 100%;
+  animation: lf-shimmer 1.4s infinite;
+  border-radius: 8px;
+}
+
+@keyframes lf-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ---- 页面过渡 ---- */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: opacity 0.28s var(--ease-out), transform 0.28s var(--ease-out);
+}
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.fade-slide-leave-to {
+  opacity: 0;
+}
+
+/* ---- Element Plus 细节调优 ---- */
+.el-button {
+  border-radius: var(--lf-radius-sm);
+  font-weight: 500;
+}
+
+.el-dialog {
+  border-radius: var(--lf-radius) !important;
+}
+
+.el-input__wrapper,
+.el-textarea__inner {
+  border-radius: var(--lf-radius-sm);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d3dae6;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b8c2d4;
+}

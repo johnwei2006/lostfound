@@ -1,0 +1,60 @@
+{
+  "name": "寻物志",
+  "appid": "",
+  "description": "失物招领平台小程序端",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "vueVersion": "3",
+  "app-plus": {
+    "usingComponents": true,
+    "nvueStyleCompiler": "uni-app",
+    "compilerVersion": 3,
+    "splashscreen": {
+      "alwaysShowBeforeRender": true,
+      "waiting": true,
+      "autoclose": true,
+      "delay": 0
+    },
+    "modules": {},
+    "distribute": {
+      "android": { "permissions": ["<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>"] },
+      "ios": {},
+      "sdkConfigs": {}
+    }
+  },
+  "quickapp": {},
+  "mp-weixin": {
+    "appid": "",
+    "setting": {
+      "urlCheck": true,
+      "es6": true,
+      "postcss": true,
+      "minified": true
+    },
+    "usingComponents": true,
+    "permission": {
+      "scope.userLocation": {
+        "desc": "你的位置信息将用于标记失物/拾物地点"
+      }
+    },
+    "requiredPrivateInfos": ["chooseLocation", "getLocation"]
+  },
+  "h5": {
+    "sdkConfigs": {
+      "maps": {
+        "amap": {
+          "key": "85c69809d67b7cebe49743160a050d79",
+          "securityJsCode": ""
+        }
+      }
+    },
+    "devServer": {
+      "port": 5174,
+      "proxy": {
+        "/api": { "target": "http://localhost:8080", "changeOrigin": true },
+        "/uploads": { "target": "http://localhost:8080", "changeOrigin": true }
+      }
+    }
+  }
+}
