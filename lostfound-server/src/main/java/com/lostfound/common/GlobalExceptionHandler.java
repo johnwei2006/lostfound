@@ -1,6 +1,7 @@
 package com.lostfound.common;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -24,6 +25,12 @@ public class GlobalExceptionHandler {
         FieldError fe = e.getBindingResult().getFieldError();
         String msg = fe == null ? "参数校验失败" : fe.getField() + " " + fe.getDefaultMessage();
         return Result.fail(400, msg);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public Result<Void> handleNotReadable(HttpMessageNotReadableException e) {
+        log.warn("请求体解析失败：{}", e.getMessage());
+        return Result.fail(400, "请求参数格式不正确，请检查时间等字段");
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)

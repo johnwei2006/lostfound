@@ -49,11 +49,12 @@
         </view>
       </view>
 
-      <!-- 地图选点 -->
+      <!-- 地图选点：选点接口不可用时仍可手动输入地点 -->
       <view class="form-item">
         <text class="label">{{ type === 'found' ? '拾获地点' : '丢失地点' }}</text>
-        <view class="input picker" @tap="chooseLocation">
-          {{ form.address || '点击选择位置（可选）' }}
+        <view class="location-row">
+          <input v-model="form.address" class="input location-input" placeholder="输入地点，或点击右侧选点（可选）" />
+          <view class="location-btn" @tap="chooseLocation">选点</view>
         </view>
       </view>
 
@@ -74,6 +75,7 @@ import { reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { itemApi, CATEGORIES } from '@/utils/api'
 import { uploadFile } from '@/utils/request'
+import { ensurePrivacyAuthorize } from '@/utils/location'
 
 const type = ref('lost')
 const categories = CATEGORIES
@@ -98,37 +100,69 @@ onShow(() => {
   }
 })
 
-const chooseImage = () => {
+/** 隐私接口失败时给出真实原因，避免点击后毫无反应；主动取消不打扰用户 */
+const showApiError = (title, err) => {
+  const msg = (err && err.errMsg) || '未知错误'
+  if (/cancel/i.test(msg)) return
+  console.error('[publish]', title, msg)
+  uni.showModal({
+    title,
+    content: `${msg}\n若为权限问题，请在微信公众平台开通接口并配置用户隐私保护指引`,
+    showCancel: false,
+  })
+}
+
+const uploadPicked = async (paths) => {
+  if (!paths.length) return
+  uni.showLoading({ title: '上传中' })
+  try {
+    for (const path of paths) {
+      const url = await uploadFile(path)
+      images.value.push(url)
+    }
+  } catch (e) {
+    uni.showToast({ title: e.message || '上传失败', icon: 'none' })
+  } finally {
+    uni.hideLoading()
+  }
+}
+
+const chooseImage = async () => {
+  if (!(await ensurePrivacyAuthorize())) {
+    return uni.showToast({ title: '请先同意隐私协议', icon: 'none' })
+  }
+  const count = 6 - images.value.length
+  const onFail = (err) => showApiError('选择图片失败', err)
+  // 基础库 2.21+ 推荐 chooseMedia，旧版本回退 chooseImage
+  if (typeof uni.chooseMedia === 'function') {
+    return uni.chooseMedia({
+      count,
+      mediaType: ['image'],
+      sizeType: ['compressed'],
+      success: (res) => uploadPicked((res.tempFiles || []).map((f) => f.tempFilePath)),
+      fail: onFail,
+    })
+  }
   uni.chooseImage({
-    count: 6 - images.value.length,
+    count,
     sizeType: ['compressed'],
-    success: async (res) => {
-      uni.showLoading({ title: '上传中' })
-      try {
-        for (const path of res.tempFilePaths) {
-          const url = await uploadFile(path)
-          images.value.push(url)
-        }
-      } catch (e) {
-        uni.showToast({ title: e.message || '上传失败', icon: 'none' })
-      } finally {
-        uni.hideLoading()
-      }
-    },
+    success: (res) => uploadPicked(res.tempFilePaths || []),
+    fail: onFail,
   })
 }
 const removeImage = (i) => images.value.splice(i, 1)
 
-const chooseLocation = () => {
+const chooseLocation = async () => {
+  if (!(await ensurePrivacyAuthorize())) {
+    return uni.showToast({ title: '请先同意隐私协议', icon: 'none' })
+  }
   uni.chooseLocation({
     success: (res) => {
       form.address = res.address || res.name
       form.longitude = res.longitude
       form.latitude = res.latitude
     },
-    fail: () => {
-      // 未授权或取消则忽略
-    },
+    fail: (err) => showApiError('打开地图选点失败', err),
   })
 }
 
@@ -214,6 +248,23 @@ const submit = async () => {
   font-size: 28rpx;
   width: auto;
   height: 180rpx;
+}
+.location-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.location-input {
+  flex: 1;
+  min-width: 0;
+}
+.location-btn {
+  flex-shrink: 0;
+  background: #eaf1fe;
+  color: #2563eb;
+  border-radius: 12rpx;
+  padding: 18rpx 24rpx;
+  font-size: 26rpx;
 }
 .grid {
   display: flex;
