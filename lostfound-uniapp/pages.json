@@ -8,7 +8,8 @@
     { "path": "pages/detail/detail", "style": { "navigationBarTitleText": "详情" } },
     { "path": "pages/login/login", "style": { "navigationBarTitleText": "登录" } },
     { "path": "pages/map/map", "style": { "navigationBarTitleText": "地图寻物" } },
-    { "path": "pages/sites/sites", "style": { "navigationBarTitleText": "招领站" } }
+    { "path": "pages/sites/sites", "style": { "navigationBarTitleText": "招领站" } },
+    { "path": "pages/web-login/web-login", "style": { "navigationBarTitleText": "确认登录网页" } }
   ],
   "globalStyle": {
     "navigationBarBackgroundColor": "#2563EB",

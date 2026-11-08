@@ -7,6 +7,8 @@ export const authApi = {
   wxLogin: (data) => request({ url: '/api/auth/wx-login', method: 'POST', data }),
   me: () => request({ url: '/api/auth/me' }),
   updateProfile: (data) => request({ url: '/api/auth/profile', method: 'PUT', data }),
+  /** 扫码登录网页：在小程序内确认票据，request.js 自动携带当前用户 JWT */
+  confirmWebLogin: (ticket) => request({ url: '/api/auth/qr/confirm', method: 'POST', data: { ticket } }),
 }
 
 /* ---------------- 物品 ---------------- */
