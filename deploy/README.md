@@ -98,6 +98,7 @@ node remote-deploy.js web       # 上传 Web dist + Nginx 配置，reload，HTTP
 - [x] 正式证书已启用（DigiCert DV，SAN 覆盖两个域名，有效期至 2027-02-05），`openssl s_client` 验证链完整
 - [x] 历史图片 `https://www.globalfinding.com/image/20160508/1_232651.jpeg` → 200
 - [x] 51 条失物记录的图片地址已补全为 HTTPS 绝对 URL，微信小程序 `<image>` 可直接加载
+- [x] 拾物历史数据已迁移：`legacy_found` 186 条 → `found` 186 条（含 2023/2024 年新增 2 条），84 条图片地址已补全为 HTTPS；`/api/found/page` 的 `total=186`，距离与时间排序实测正常，`legacy_found` 原表保留
 - [x] 新上传写入 `/home/lostfound/image/YYYYMM/`，旧 `/uploads/` URL 仍可访问
 - [x] `certbot.timer` 保留为应急备用（当前站点不使用其证书）
 
