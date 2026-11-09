@@ -55,7 +55,12 @@ CREATE TABLE IF NOT EXISTS `found` (
     `found_time`    DATETIME      DEFAULT NULL COMMENT '拾获时间',
     `contact`       VARCHAR(100)  DEFAULT NULL COMMENT '联系方式',
     `status`        VARCHAR(20)   NOT NULL DEFAULT 'WAITING' COMMENT '状态：WAITING-待认领 / CLAIMED-已认领 / FINISHED-已完成 / OFFLINE-已下架',
-    `review_status` VARCHAR(20)   NOT NULL DEFAULT 'APPROVED' COMMENT '审核状态：PENDING / APPROVED / REJECTED',
+    `review_status` VARCHAR(20)   NOT NULL DEFAULT 'APPROVED' COMMENT '审核状态：PENDING / APPROVED / REJECTED（全局发布审核）',
+    `source_type`      VARCHAR(20) NOT NULL DEFAULT 'PERSONAL' COMMENT '来源：PERSONAL-个人登记 / SITE-站点发布 / TRANSFER-转交入库',
+    `transfer_status`  VARCHAR(20) NOT NULL DEFAULT 'NONE' COMMENT '站点转交：NONE/PENDING/APPROVED/REJECTED/CANCELLED',
+    `submit_user_id`   BIGINT      DEFAULT NULL COMMENT '源头登记人ID',
+    `site_approved_by` BIGINT      DEFAULT NULL COMMENT '站点审批人ID',
+    `site_approved_at` DATETIME    DEFAULT NULL COMMENT '站点审批时间',
     `view_count`    INT           NOT NULL DEFAULT 0 COMMENT '浏览量',
     `deleted`       TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',
     `create_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -66,6 +71,7 @@ CREATE TABLE IF NOT EXISTS `found` (
     KEY `idx_city` (`city`),
     KEY `idx_user` (`user_id`),
     KEY `idx_site` (`site_id`),
+    KEY `idx_site_transfer` (`site_id`, `transfer_status`),
     KEY `idx_create_time` (`create_time`),
     FULLTEXT KEY `ft_title_desc` (`title`, `description`) WITH PARSER ngram
 ) ENGINE = InnoDB COMMENT ='拾物表';
@@ -133,6 +139,50 @@ CREATE TABLE IF NOT EXISTS `foundsite_manager` (
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_site_user` (`site_id`, `user_id`)
 ) ENGINE = InnoDB COMMENT ='招领站管理员表';
+
+-- ---------------------------------------------------------------------
+-- 拾物转交招领站申请表（申请 -> 站点管理员审批 -> 入库）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `found_transfer` (
+    `id`            BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `found_id`      BIGINT        NOT NULL COMMENT '拾物ID',
+    `site_id`       BIGINT        NOT NULL COMMENT '目标招领站ID',
+    `from_user_id`  BIGINT        NOT NULL COMMENT '转交人（原始登记人）',
+    `status`        VARCHAR(20)   NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/APPROVED/REJECTED/CANCELLED',
+    `remark`        VARCHAR(500)  DEFAULT NULL COMMENT '转交备注或审批意见',
+    `reviewer_id`   BIGINT        DEFAULT NULL COMMENT '审批人ID',
+    `review_time`   DATETIME      DEFAULT NULL COMMENT '审批时间',
+    `deleted`       TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    `create_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '申请时间',
+    `update_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_found` (`found_id`),
+    KEY `idx_site_status` (`site_id`, `status`),
+    KEY `idx_from_user` (`from_user_id`)
+) ENGINE = InnoDB COMMENT ='拾物转交招领站申请表';
+
+-- ---------------------------------------------------------------------
+-- 拾物归还登记表（认领审批通过 / 现场登记两条路径统一落表）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `found_return` (
+    `id`             BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `found_id`       BIGINT       NOT NULL COMMENT '拾物ID',
+    `site_id`        BIGINT       DEFAULT NULL COMMENT '所属招领站ID',
+    `claim_id`       BIGINT       DEFAULT NULL COMMENT '关联认领申请ID（认领通过时）',
+    `way`            VARCHAR(20)  NOT NULL DEFAULT 'ONSITE' COMMENT 'CLAIM-认领审批 / ONSITE-现场登记',
+    `receiver_name`  VARCHAR(50)  DEFAULT NULL COMMENT '领取人',
+    `receiver_phone` VARCHAR(30)  DEFAULT NULL COMMENT '领取人联系方式',
+    `evidence`       TEXT         COMMENT '归还凭证图片URL（JSON数组）',
+    `remark`         VARCHAR(500) DEFAULT NULL COMMENT '备注',
+    `operator_id`    BIGINT       NOT NULL COMMENT '登记/审批人ID',
+    `return_time`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '归还时间',
+    `deleted`        TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    `create_time`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_found` (`found_id`),
+    KEY `idx_site` (`site_id`),
+    KEY `idx_claim` (`claim_id`)
+) ENGINE = InnoDB COMMENT ='拾物归还登记表';
 
 -- ---------------------------------------------------------------------
 -- 拾物评论表（对应旧表 foundcomments）

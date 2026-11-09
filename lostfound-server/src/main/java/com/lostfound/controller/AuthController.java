@@ -13,6 +13,7 @@ import com.lostfound.entity.User;
 import com.lostfound.service.AuthService;
 import com.lostfound.service.LogService;
 import com.lostfound.service.QrLoginService;
+import com.lostfound.vo.MeVO;
 import com.lostfound.vo.QrStatusVO;
 import com.lostfound.vo.QrTicketVO;
 import jakarta.servlet.http.HttpServletRequest;
@@ -77,7 +78,7 @@ public class AuthController {
 
     @RequireLogin
     @GetMapping("/me")
-    public Result<User> me() {
+    public Result<MeVO> me() {
         return Result.ok(authService.profile(UserContext.getUserId()));
     }
 

@@ -39,6 +39,14 @@ public class PublishItemDTO {
 
     private String contact;
 
-    /** 拾物可关联招领站 */
+    /**
+     * 拾物「申请转交」的目标招领站。
+     * 普通用户填写后创建 PENDING 转交单，需站点管理员审批通过才进入站点清单；
+     * 站点管理员代发布请走 POST /api/foundsite/{id}/items。
+     */
     private Long siteId;
+
+    /** 转交申请备注（可选），与全局发布审核 review_status 无关 */
+    @Size(max = 500, message = "转交备注最长 500 字")
+    private String transferRemark;
 }

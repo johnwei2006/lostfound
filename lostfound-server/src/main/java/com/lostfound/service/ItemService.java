@@ -15,10 +15,9 @@ import com.lostfound.vo.ItemVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -43,7 +42,8 @@ public class ItemService {
     private final LostCommentMapper lostCommentMapper;
     private final MatchService matchService;
     private final ObjectMapper objectMapper;
-    private final CacheManager cacheManager;
+    private final CacheEvictService cacheEvictService;
+    private final TransferService transferService;
 
     @Value("${lostfound.review.required:false}")
     private boolean reviewRequired;
@@ -60,6 +60,7 @@ public class ItemService {
         PageResult<ItemVO> result = new PageResult<>();
         if ("FOUND".equals(type)) {
             QueryWrapper<Found> qw = buildQuery(q, reviewRequired);
+            applySiteVisibility(qw, q);
             List<Found> records;
             long total;
             long pages;
@@ -110,6 +111,21 @@ public class ItemService {
 
     private <T> void applyDefaultOrder(QueryWrapper<T> qw, String sort) {
         qw.orderByDesc("hot".equalsIgnoreCase(sort) ? "view_count" : "create_time");
+    }
+
+    /**
+     * 站点相关过滤只作用于 found（lost 表无这些列）：
+     * 按站点查询时仅展示站点直接发布或转交审批通过的物品，避免 PENDING 转交单提前曝光。
+     */
+    private void applySiteVisibility(QueryWrapper<Found> qw, ItemQuery q) {
+        String sourceType = param(q.getSourceType());
+        if (sourceType != null) qw.eq("source_type", sourceType.toUpperCase());
+        String transferStatus = param(q.getTransferStatus());
+        if (transferStatus != null) qw.eq("transfer_status", transferStatus.toUpperCase());
+        if (q.getSiteId() != null) {
+            qw.and(w -> w.eq("source_type", Found.SOURCE_SITE)
+                    .or().eq("transfer_status", Found.TRANSFER_APPROVED));
+        }
     }
 
     /**
@@ -233,6 +249,7 @@ public class ItemService {
     // 发布 / 编辑 / 删除
     // ------------------------------------------------------------------
 
+    @Transactional
     public Long publish(String type, Long userId, PublishItemDTO dto) {
         Long id;
         if ("FOUND".equals(type)) {
@@ -243,8 +260,19 @@ public class ItemService {
             f.setStatus(Found.STATUS_WAITING);
             f.setReviewStatus(reviewRequired ? "PENDING" : "APPROVED");
             f.setViewCount(0);
+            f.setSubmitUserId(userId);
+            f.setSourceType(Found.SOURCE_PERSONAL);
+            f.setTransferStatus(Found.TRANSFER_NONE);
+            if (dto.getSiteId() != null) {
+                // siteId 语义为「申请转交目标站点」，先校验再在同一事务内建转交单
+                transferService.requireSite(dto.getSiteId());
+                f.setTransferStatus(Found.TRANSFER_PENDING);
+            }
             foundMapper.insert(f);
             id = f.getId();
+            if (dto.getSiteId() != null) {
+                transferService.applyForPublish(f, dto.getSiteId(), userId, dto.getTransferRemark());
+            }
             matchService.triggerOnFound(f);
         } else {
             Lost l = new Lost();
@@ -262,11 +290,42 @@ public class ItemService {
         return id;
     }
 
+    /** 站点管理员代发布：直接标记为站点来源，无需转交审批 */
+    @Transactional
+    public Long publishForSite(Long siteId, Long userId, PublishItemDTO dto) {
+        Found f = new Found();
+        applyDto(f, dto);
+        f.setUserId(userId);
+        f.setSiteId(siteId);
+        f.setFoundTime(dto.getItemTime());
+        f.setStatus(Found.STATUS_WAITING);
+        f.setReviewStatus(reviewRequired ? "PENDING" : "APPROVED");
+        f.setViewCount(0);
+        f.setSubmitUserId(userId);
+        f.setSourceType(Found.SOURCE_SITE);
+        f.setTransferStatus(Found.TRANSFER_APPROVED);
+        f.setSiteApprovedBy(userId);
+        f.setSiteApprovedAt(LocalDateTime.now());
+        foundMapper.insert(f);
+        matchService.triggerOnFound(f);
+        evictLatest();
+        return f.getId();
+    }
+
     public void update(String type, Long id, Long userId, PublishItemDTO dto) {
         if ("FOUND".equals(type)) {
             Found f = requireFound(id);
             checkOwner(f.getUserId(), userId);
+            // 站点归属与转交状态只能由转交流程修改，编辑接口不得绕过审批
+            Long siteId = f.getSiteId();
+            String sourceType = f.getSourceType();
+            String transferStatus = f.getTransferStatus();
+            Long submitUserId = f.getSubmitUserId();
             applyDto(f, dto);
+            f.setSiteId(siteId);
+            f.setSourceType(sourceType);
+            f.setTransferStatus(transferStatus);
+            f.setSubmitUserId(submitUserId);
             f.setFoundTime(dto.getItemTime());
             foundMapper.updateById(f);
         } else {
@@ -311,7 +370,8 @@ public class ItemService {
     // VO 转换
     // ------------------------------------------------------------------
 
-    private List<ItemVO> convertFound(List<Found> list, Long currentUserId) {
+    /** 拾物 VO 转换（供站点清单等其它服务复用） */
+    public List<ItemVO> convertFound(List<Found> list, Long currentUserId) {
         if (list.isEmpty()) return List.of();
         List<Long> ids = list.stream().map(Found::getId).toList();
         Map<Long, Long> focusCounts = focusCounts(ids, true);
@@ -353,6 +413,9 @@ public class ItemService {
             vo.setContact(f.getContact());
             vo.setStatus(f.getStatus());
             vo.setReviewStatus(f.getReviewStatus());
+            vo.setSourceType(f.getSourceType());
+            vo.setTransferStatus(f.getTransferStatus());
+            vo.setSubmitUserId(f.getSubmitUserId());
             vo.setViewCount(f.getViewCount());
             vo.setFocusCount(focusCounts.getOrDefault(f.getId(), 0L));
             vo.setCommentCount(commentCounts.getOrDefault(f.getId(), 0L));
@@ -518,8 +581,7 @@ public class ItemService {
     }
 
     private void evictLatest() {
-        Cache cache = cacheManager.getCache("latestItems");
-        if (cache != null) cache.clear();
+        cacheEvictService.evictLatest();
     }
 
     private String roleOf(Long userId) {

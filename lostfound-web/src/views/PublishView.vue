@@ -30,6 +30,7 @@ const form = ref({
   itemTime: '',
   contact: '',
   siteId: undefined as number | undefined,
+  transferRemark: '',
 })
 const sites = ref<FoundSite[]>([])
 const submitting = ref(false)
@@ -78,13 +79,21 @@ const submit = async () => {
   if (!form.value.category) return ElMessage.warning('请选择物品类别')
   submitting.value = true
   try {
+    const applyingTransfer = isFound.value && !!form.value.siteId
     await itemApi.publish(type.value, {
       ...form.value,
+      siteId: isFound.value ? form.value.siteId : undefined,
+      transferRemark: isFound.value ? form.value.transferRemark : undefined,
       itemTime: form.value.itemTime ? dayjs(form.value.itemTime).format('YYYY-MM-DD HH:mm:ss') : null,
       contact: form.value.contact || store.user?.phone || '',
     })
-    ElMessage.success('发布成功！系统将自动进行智能匹配')
-    router.push(`/${type.value}`)
+    if (applyingTransfer) {
+      ElMessage.success('已提交转交申请，等待招领站管理员审批通过后在站点清单展示')
+      router.push('/profile?tab=transfers')
+    } else {
+      ElMessage.success('发布成功！系统将自动进行智能匹配')
+      router.push(`/${type.value}`)
+    }
   } catch (e: any) {
     ElMessage.error(e.message)
   } finally {
@@ -187,10 +196,14 @@ const submit = async () => {
         <el-form-item label="详细地址">
           <el-input v-model="form.address" placeholder="详细地点" />
         </el-form-item>
-        <el-form-item v-if="isFound" label="交至招领站（选填）">
-          <el-select v-model="form.siteId" placeholder="物品当前保管在哪个招领站" clearable style="width: 100%">
+        <el-form-item v-if="isFound" label="申请转交到招领站（选填）">
+          <el-select v-model="form.siteId" placeholder="选择要转交的招领站" clearable style="width: 100%">
             <el-option v-for="s in sites" :key="s.id" :label="s.name" :value="s.id" />
           </el-select>
+          <p class="transfer-hint">选择后不会直接出现在站点清单：需站点管理员审批通过才入库，你可在「个人中心 → 我的转交」查看审批与归还进度。</p>
+        </el-form-item>
+        <el-form-item v-if="isFound && form.siteId" label="转交备注">
+          <el-input v-model="form.transferRemark" maxlength="500" show-word-limit placeholder="可说明物品当前保管方式、交接时间等" />
         </el-form-item>
         <el-form-item label="联系方式">
           <el-input v-model="form.contact" placeholder="手机号 / 微信号（认领通过后展示给对方）" />
@@ -245,5 +258,11 @@ const submit = async () => {
   color: var(--lf-success);
   background: #ecfdf5;
   font-weight: 600;
+}
+.transfer-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--lf-text-3);
 }
 </style>

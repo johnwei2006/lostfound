@@ -10,7 +10,9 @@ import com.lostfound.dto.UpdateProfileDTO;
 import com.lostfound.dto.WxLoginDTO;
 import com.lostfound.entity.User;
 import com.lostfound.mapper.UserMapper;
+import com.lostfound.vo.MeVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.BeanUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,7 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
     private final WxAuthService wxAuthService;
+    private final SitePermissionService sitePermission;
 
     public Map<String, Object> register(RegisterDTO dto) {
         Long count = userMapper.selectCount(new QueryWrapper<User>().eq("username", dto.getUsername()));
@@ -101,8 +104,15 @@ public class AuthService {
         return map;
     }
 
-    public User profile(Long userId) {
-        return userMapper.selectById(userId);
+    /** /api/auth/me：携带当前用户可管理的招领站，供 Web 端菜单与路由守卫判定 */
+    public MeVO profile(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) throw new BusinessException("用户不存在");
+        MeVO vo = new MeVO();
+        BeanUtils.copyProperties(user, vo);
+        vo.setManagedSiteIds(sitePermission.mySiteIds(userId));
+        vo.setSiteManager(sitePermission.isSiteManager(userId));
+        return vo;
     }
 
     public void updateProfile(Long userId, UpdateProfileDTO dto) {

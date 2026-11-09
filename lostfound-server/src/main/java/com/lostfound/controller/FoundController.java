@@ -7,9 +7,10 @@ import com.lostfound.common.Result;
 import com.lostfound.dto.ClaimDTO;
 import com.lostfound.dto.ItemQuery;
 import com.lostfound.dto.PublishItemDTO;
-import com.lostfound.entity.Found;
+import com.lostfound.dto.TransferDTO;
 import com.lostfound.service.ClaimService;
 import com.lostfound.service.ItemService;
+import com.lostfound.service.TransferService;
 import com.lostfound.vo.ClaimVO;
 import com.lostfound.vo.ItemVO;
 import jakarta.validation.Valid;
@@ -17,7 +18,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * 拾物接口
@@ -31,6 +31,7 @@ public class FoundController {
 
     private final ItemService itemService;
     private final ClaimService claimService;
+    private final TransferService transferService;
 
     /** 分页列表（支持匿名浏览） */
     @GetMapping("/page")
@@ -82,6 +83,21 @@ public class FoundController {
     public Result<PageResult<ItemVO>> mine(@RequestParam(defaultValue = "1") long page,
                                            @RequestParam(defaultValue = "10") long size) {
         return Result.ok(itemService.mine(TYPE, UserContext.getUserId(), page, size));
+    }
+
+    /** 申请转交到招领站（与 POST /api/transfer 等价，物品 ID 走路径） */
+    @RequireLogin
+    @PostMapping("/{id}/transfer")
+    public Result<Long> transfer(@PathVariable Long id, @Valid @RequestBody TransferDTO dto) {
+        return Result.ok(transferService.apply(id, dto.getSiteId(), UserContext.getUserId(), dto.getRemark()));
+    }
+
+    /** 撤回该物品当前待审批的转交申请 */
+    @RequireLogin
+    @DeleteMapping("/{id}/transfer")
+    public Result<Void> cancelTransfer(@PathVariable Long id) {
+        transferService.cancelLatest(id, UserContext.getUserId());
+        return Result.ok();
     }
 
     // ------------------ 认领流转 ------------------

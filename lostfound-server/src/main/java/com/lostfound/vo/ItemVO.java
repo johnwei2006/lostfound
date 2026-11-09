@@ -40,6 +40,12 @@ public class ItemVO {
     private String contact;
     private String status;
     private String reviewStatus;
+    /** 站点来源：PERSONAL / SITE / TRANSFER */
+    private String sourceType;
+    /** 站点转交状态：NONE / PENDING / APPROVED / REJECTED / CANCELLED */
+    private String transferStatus;
+    /** 源头登记人 */
+    private Long submitUserId;
     private Integer viewCount;
 
     private Long focusCount;

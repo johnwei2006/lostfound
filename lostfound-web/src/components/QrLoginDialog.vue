@@ -45,7 +45,7 @@ const poll = async () => {
     if (!visible.value || ticket.value !== current) return
     if (data.status === 'confirmed' && data.token && data.user) {
       // 与小程序同一个 user.id 对应的 JWT
-      store.setSession({ token: data.token, user: data.user })
+      await store.setSession({ token: data.token, user: data.user })
       ElMessage.success(`欢迎回来，${data.user.nickname || '朋友'}`)
       // 登录页发起的扫码没有 redirect，成功后回首页；其余场景停留在原页由页面自行刷新
       const target = redirect.value || (router.currentRoute.value.name === 'login' ? '/' : '')

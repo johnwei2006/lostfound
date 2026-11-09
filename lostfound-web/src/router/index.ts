@@ -29,18 +29,35 @@ const router = createRouter({
         { path: 'users', name: 'adminUsers', component: () => import('@/views/admin/UsersView.vue') },
       ],
     },
+    {
+      path: '/manage',
+      component: () => import('@/views/manage/ManageLayout.vue'),
+      meta: { auth: true, siteManager: true },
+      children: [
+        { path: '', redirect: '/manage/items' },
+        { path: 'items', name: 'manageItems', component: () => import('@/views/manage/SiteItemsView.vue') },
+        { path: 'transfers', name: 'manageTransfers', component: () => import('@/views/manage/TransferReviewView.vue') },
+        { path: 'returns', name: 'manageReturns', component: () => import('@/views/manage/ReturnManageView.vue') },
+      ],
+    },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
   scrollBehavior: () => ({ top: 0 }),
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const store = useUserStore()
   if (to.meta.auth && !store.isLoggedIn) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
   if (to.meta.admin && !store.isAdmin) {
     return { name: 'home' }
+  }
+  if (to.meta.siteManager) {
+    // 登录响应里没有站点范围，进入 /manage 前拉一次 /api/auth/me
+    if (!store.siteLoaded || !store.isSiteManager) await store.refresh()
+    if (!store.isLoggedIn) return { name: 'login', query: { redirect: to.fullPath } }
+    if (!store.isSiteManager) return { name: 'home' }
   }
 })
 

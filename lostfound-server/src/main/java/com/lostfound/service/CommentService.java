@@ -4,11 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.lostfound.common.BusinessException;
 import com.lostfound.dto.CommentDTO;
 import com.lostfound.entity.FoundComment;
-import com.lostfound.entity.FoundSiteManager;
 import com.lostfound.entity.LostComment;
 import com.lostfound.entity.User;
 import com.lostfound.mapper.FoundCommentMapper;
-import com.lostfound.mapper.FoundSiteManagerMapper;
 import com.lostfound.mapper.LostCommentMapper;
 import com.lostfound.mapper.UserMapper;
 import com.lostfound.vo.CommentVO;
@@ -34,7 +32,7 @@ public class CommentService {
     private final FoundCommentMapper foundCommentMapper;
     private final LostCommentMapper lostCommentMapper;
     private final UserMapper userMapper;
-    private final FoundSiteManagerMapper foundSiteManagerMapper;
+    private final SitePermissionService sitePermission;
     private final ItemService itemService;
 
     /** 评论树（两层：根评论 + 子回复） */
@@ -135,10 +133,8 @@ public class CommentService {
         }
     }
 
-    /** 是否招领站管理员（发布到站点的物品由站点管理员可操作） */
+    /** 是否招领站管理员（统一委托 SitePermissionService，消除重复逻辑） */
     public boolean isSiteManager(Long siteId, Long userId) {
-        if (siteId == null) return false;
-        return foundSiteManagerMapper.selectCount(new QueryWrapper<FoundSiteManager>()
-                .eq("site_id", siteId).eq("user_id", userId)) > 0;
+        return sitePermission.isManager(userId, siteId);
     }
 }

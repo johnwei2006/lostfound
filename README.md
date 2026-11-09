@@ -30,6 +30,48 @@
 - 管理后台：物品审核、招领站管理、用户管理（禁用/恢复）、ECharts 数据统计（趋势/类别分布）
 - 地图：高德地图（未配置 Key 自动降级为坐标输入/列表模式）
 
+## 招领站管理（Web + 后端）
+
+全局 `ADMIN` 在 `/admin/sites` 建立、编辑、删除招领站，并以**全量覆盖**方式配置多个站点管理员（权限来源 `foundsite_manager`，不新增 `user.role` 角色）。站点管理员登录后从顶栏进入独立的 `/manage` 后台，只能管理所属站点；全局 `ADMIN` 自动拥有全部站点权限。
+
+| 页面 | 能力 |
+|------|------|
+| `/manage/items` | 概览统计、关键词/类别/状态/来源筛选、站点代发布、上下架、源头信息抽屉、跳归还登记 |
+| `/manage/transfers` | 转交申请与认领申请审批，审批意见、状态时间线、源头信息 |
+| `/manage/returns` | 现场归还登记（领取人/凭证/备注）、待审认领队列、归还记录与凭证查看 |
+| `/profile?tab=transfers` | 个人「我的转交」：审批结果、意见、入库与归还进度时间线、撤回申请 |
+
+**转交状态机**：个人发布拾物时选择目标站点，或在个人中心对已有拾物发起转交，生成 `PENDING` 转交单；站点管理员通过后物品进入站点清单，驳回或撤回后不展示。
+
+```
+NONE → PENDING → APPROVED（站点清单可见）
+              ↘ REJECTED / CANCELLED
+```
+
+`found.source_type`（`PERSONAL` / `SITE` / `TRANSFER`）与 `found.transfer_status` 控制可见性：站点清单只返回 `source_type='SITE'` 或 `transfer_status='APPROVED'` 的物品，`idx_site_transfer(site_id, transfer_status)` 支撑分页过滤。存量 `site_id` 非空的记录在迁移时统一回填为 `SITE/APPROVED`，避免上线后清单清空。
+
+**归还两条路径**：认领申请审批通过（`CLAIM`）与站点现场登记（`ONSITE`）都写 `found_return` 并把物品置为 `FINISHED`，同时向原始登记人/转交人推送消息；源头信息（原始登记人、时间、描述与联系方式、转交链路、审批人/时间、归还记录）由 `GET /api/transfer/source/{foundId}` 聚合，仅站点管理员与原始登记人可见。
+
+发布审核 `found.review_status`（全局 `lostfound.review.required`）与站点转交审批 `found_transfer.status` 是两套独立流程，不可复用。所有站点写接口在 Service 层用 `SitePermissionService.requireManager(siteId)` 校验，失败返回 403，不依赖前端隐藏按钮。
+
+### 数据库迁移
+
+新装库直接执行 `schema.sql`（已含新表与新列）。存量库必须先迁移再部署后端，脚本幂等且兼容 MySQL 5.6：
+
+```powershell
+cd C:/Users/John/AppData/Local/Temp/dbtool
+$env:LOSTFOUND_DB_PASSWORD = '<数据库口令>'
+node site-mgmt-migrate.js survey     # 勘察现状
+node site-mgmt-migrate.js dry-run    # 预览变更，不写库
+node site-mgmt-migrate.js apply      # 建表/加列/加索引 + 存量回填（自动全表快照）
+node site-mgmt-migrate.js verify     # 行数与结构校验
+node site-mgmt-migrate.js rollback <14位后缀>   # 需要时撤销本次新增结构
+```
+
+`apply` 前创建 `site_mgmt_bak_<时间戳>` 全表快照与同名 `_meta` 元数据表；回滚只撤销本次新增的表/列/索引，不删除任何 `found` 业务行，检测到新转交业务数据时会拒绝回滚。手动执行的等价 SQL 见 `lostfound-server/src/main/resources/sql/migration-site-management.sql`。
+
+> 生产库已于 2026-11-09 完成迁移（`verify` 全部通过，快照 `site_mgmt_bak_20261109140607`），后端与 Web 同日部署上线；新装库执行 `schema.sql` 即可，无需再跑迁移脚本。上线细节见 `deploy/README.md`。
+
 ## 数据库
 
 - 建表脚本：`lostfound-server/src/main/resources/sql/schema.sql`（MySQL 8，14 张表，含旧系统缺失的 message/claim_request/foundsite_manager/match_record 等）

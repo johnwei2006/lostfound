@@ -28,8 +28,12 @@ public class ItemQuery {
     private BigDecimal userLng;
     /** 只看我的（需登录） */
     private Boolean mine;
-    /** 按招领站过滤 */
+    /** 按招领站过滤（拾物会自动排除未审批通过的转交物品） */
     private Long siteId;
+    /** 来源筛选：PERSONAL / SITE / TRANSFER */
+    private String sourceType;
+    /** 转交状态筛选：NONE / PENDING / APPROVED / REJECTED / CANCELLED */
+    private String transferStatus;
 
     private long page = 1;
     private long size = 10;

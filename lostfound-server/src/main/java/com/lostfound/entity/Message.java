@@ -15,6 +15,12 @@ public class Message {
     public static final String TYPE_MATCH = "MATCH";
     public static final String TYPE_CLAIM = "CLAIM";
     public static final String TYPE_SYSTEM = "SYSTEM";
+    /** 站点转交动态 */
+    public static final String TYPE_TRANSFER = "TRANSFER";
+    /** 归还进度 */
+    public static final String TYPE_RETURN = "RETURN";
+    /** 站点管理通知 */
+    public static final String TYPE_SITE = "SITE";
 
     @TableId(type = IdType.AUTO)
     private Long id;

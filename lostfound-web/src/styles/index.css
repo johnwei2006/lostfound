@@ -99,6 +99,8 @@ a {
 .lf-tag--claimed { background: var(--lf-accent-soft); color: var(--lf-accent); }
 .lf-tag--finished { background: #e7f8f1; color: var(--lf-success); }
 .lf-tag--offline { background: #f3f4f6; color: var(--lf-text-3); }
+.lf-tag--muted { background: #f3f4f6; color: var(--lf-text-3); }
+.lf-tag--danger { background: #fef2f2; color: var(--lf-danger); }
 
 /* ---- 骨架屏 shimmer ---- */
 .lf-skeleton {

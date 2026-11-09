@@ -29,7 +29,11 @@ setInterval(loadUnread, 60_000)
 
 // 401 时 request.ts 已清 localStorage，这里同步 Pinia，且不再整页跳登录
 const onAuthExpired = () => store.logout()
-onMounted(() => window.addEventListener('lf:auth-expired', onAuthExpired))
+onMounted(() => {
+  window.addEventListener('lf:auth-expired', onAuthExpired)
+  // 登录响应只含基础 User，启动时刷新一次以拿到站点管理范围与最新角色
+  if (store.isLoggedIn) store.refresh()
+})
 onUnmounted(() => window.removeEventListener('lf:auth-expired', onAuthExpired))
 
 const onSearch = () => {
@@ -102,6 +106,7 @@ const onCommand = (cmd: string) => {
                 <el-dropdown-menu>
                   <el-dropdown-item command="/profile">个人中心</el-dropdown-item>
                   <el-dropdown-item command="/matches">匹配推荐</el-dropdown-item>
+                  <el-dropdown-item v-if="store.isSiteManager" command="/manage" divided>招领站管理</el-dropdown-item>
                   <el-dropdown-item v-if="store.isAdmin" command="/admin" divided>管理后台</el-dropdown-item>
                   <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
                 </el-dropdown-menu>

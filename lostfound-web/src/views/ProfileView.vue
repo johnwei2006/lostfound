@@ -1,32 +1,55 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { User as UserIcon } from '@element-plus/icons-vue'
-import { itemApi, focusApi, claimApi, authApi } from '@/api'
-import type { ClaimVO, ItemVO } from '@/types'
+import { Refresh, User as UserIcon, View } from '@element-plus/icons-vue'
+import { itemApi, focusApi, claimApi, authApi, transferApi } from '@/api'
+import { TRANSFER_STATUS_MAP } from '@/types'
+import type { ClaimVO, ItemVO, TransferVO } from '@/types'
 import { useUserStore } from '@/stores/user'
 import { openQrLogin } from '@/composables/useQrLogin'
+import { errMsg, fmtTime } from '@/utils/format'
 import ItemCard from '@/components/ItemCard.vue'
 
+const route = useRoute()
 const router = useRouter()
 const store = useUserStore()
-const tab = ref('published')
+const initialTab = typeof route.query.tab === 'string' ? route.query.tab : 'published'
+const tab = ref(['published', 'focused', 'claims', 'transfers', 'settings'].includes(initialTab) ? initialTab : 'published')
 
 const published = ref<ItemVO[]>([])
 const focused = ref<ItemVO[]>([])
 const claims = ref<ClaimVO[]>([])
+const transfers = ref<TransferVO[]>([])
+const transferTotal = ref(0)
+const transferPage = ref(1)
+const transferSize = 20
 const loading = ref(false)
+const transferError = ref('')
 
 const profileForm = ref({ nickname: '', phone: '', email: '', avatar: '' })
 const pwdForm = ref({ oldPassword: '', newPassword: '', confirm: '' })
 
+const pendingTransfers = computed(() => transfers.value.filter((t) => t.status === 'PENDING').length)
+
+const loadTransfers = async () => {
+  transferError.value = ''
+  try {
+    const data = await transferApi.mine({ page: transferPage.value, size: transferSize })
+    transfers.value = data.records
+    transferTotal.value = data.total
+  } catch (e) {
+    transferError.value = errMsg(e, '转交记录加载失败')
+  }
+}
+
 const loadTab = async (name: string) => {
-  // 游客不发任何需登录的请求：个人资料与三个列表都保持为空
+  // 游客不发任何需登录的请求：个人资料与所有列表都保持为空
   if (!store.isLoggedIn) {
     published.value = []
     focused.value = []
     claims.value = []
+    transfers.value = []
     loading.value = false
     return
   }
@@ -43,6 +66,8 @@ const loadTab = async (name: string) => {
       focused.value = [...l.records, ...f.records]
     } else if (name === 'claims') {
       claims.value = await claimApi.mine()
+    } else if (name === 'transfers') {
+      await loadTransfers()
     } else if (name === 'settings') {
       profileForm.value = {
         nickname: store.user?.nickname || '',
@@ -96,6 +121,22 @@ const claimStatusText = computed(() => ({
   APPROVED: '已通过',
   REJECTED: '已拒绝',
 }))
+
+/* ---------------- 我的转交 ---------------- */
+const transferDetail = ref(false)
+const activeTransfer = ref<TransferVO | null>(null)
+const openTransfer = (t: TransferVO) => { activeTransfer.value = t; transferDetail.value = true }
+const cancelTransfer = async (t: TransferVO) => {
+  try {
+    await ElMessageBox.confirm('撤回后需重新提交申请，确定撤回该转交申请？', '撤回确认', { type: 'warning' })
+    await transferApi.cancel(t.id)
+    ElMessage.success('已撤回，可重新申请转交')
+    transferDetail.value = false
+    loadTransfers()
+  } catch (e) {
+    if (e instanceof Error && e.message !== 'cancel') ElMessage.error(errMsg(e, '撤回失败'))
+  }
+}
 </script>
 
 <template>
@@ -113,6 +154,9 @@ const claimStatusText = computed(() => ({
       <el-button v-else-if="store.isAdmin" type="warning" round plain @click="router.push('/admin')">
         进入管理后台
       </el-button>
+      <el-button v-else-if="store.isSiteManager" round plain @click="router.push('/manage')">
+        招领站管理
+      </el-button>
     </div>
 
     <div v-if="!store.isLoggedIn" class="guest-panel lf-card">
@@ -123,6 +167,7 @@ const claimStatusText = computed(() => ({
         <span>我的发布</span>
         <span>我的关注</span>
         <span>我的申请</span>
+        <span>我的转交</span>
       </div>
       <el-button type="primary" round @click="openQrLogin()">微信扫码登录</el-button>
       <button type="button" class="guest-panel__alt" @click="router.push('/login')">使用账号密码登录</button>
@@ -159,7 +204,7 @@ const claimStatusText = computed(() => ({
           <div v-for="c in claims" :key="c.id" class="claim-item lf-card">
             <div class="claim-head">
               <b>{{ c.itemTitle || (c.itemType === 'FOUND' ? '拾物 #' + c.itemId : '失物 #' + c.itemId) }}</b>
-              <span class="lf-tag" :class="{ 'lf-tag--waiting': c.status === 'PENDING', 'lf-tag--finished': c.status === 'APPROVED', 'lf-tag--offline': c.status === 'REJECTED' }">
+              <span class="lf-tag" :class="{ 'lf-tag--waiting': c.status === 'PENDING', 'lf-tag--finished': c.status === 'APPROVED', 'lf-tag--danger': c.status === 'REJECTED' }">
                 {{ claimStatusText[c.status as keyof typeof claimStatusText] }}
               </span>
             </div>
@@ -167,6 +212,45 @@ const claimStatusText = computed(() => ({
           </div>
         </div>
         <el-empty v-else description="暂无认领申请记录" :image="'/empty.svg'" />
+      </el-tab-pane>
+
+      <el-tab-pane name="transfers">
+        <template #label>
+          我的转交 <el-badge v-if="pendingTransfers" :value="pendingTransfers" class="tab-badge" />
+        </template>
+        <div v-if="loading" v-loading="true" class="transfer-loading">正在加载转交记录…</div>
+        <div v-else-if="transferError" class="transfer-error" role="alert">
+          <el-empty :description="transferError" :image="'/empty.svg'">
+            <el-button round :icon="Refresh" @click="loadTransfers">重试</el-button>
+          </el-empty>
+        </div>
+        <template v-else-if="transfers.length">
+          <p class="transfer-hint">审批通过后才会在招领站清单展示；归还完成后的进度也会在这里同步。</p>
+          <div class="claim-list">
+            <button v-for="t in transfers" :key="t.id" type="button" class="transfer-card lf-card" @click="openTransfer(t)">
+              <el-image v-if="t.itemImages?.length" :src="t.itemImages[0]" fit="cover" class="transfer-cover" />
+              <div v-else class="transfer-cover transfer-cover--empty">无图</div>
+              <div class="transfer-main">
+                <div class="claim-head">
+                  <b>{{ t.itemTitle }}</b>
+                  <span class="lf-tag" :class="TRANSFER_STATUS_MAP[t.status]?.cls">{{ TRANSFER_STATUS_MAP[t.status]?.text || t.status }}</span>
+                </div>
+                <p>目标站点：{{ t.siteName || '#' + t.siteId }} · 提交于 {{ fmtTime(t.createTime) }}</p>
+                <p v-if="t.returned" class="transfer-return">已归还（{{ t.returnWay === 'CLAIM' ? '认领审批' : '现场登记' }}） · {{ fmtTime(t.returnTime) }}</p>
+                <p v-else-if="t.status === 'APPROVED'" class="transfer-return">已入库，等待认领或现场归还</p>
+              </div>
+              <el-icon :size="16" class="transfer-arrow"><View /></el-icon>
+            </button>
+          </div>
+          <div v-if="transferTotal > transferSize" class="pager">
+            <el-pagination layout="prev, pager, next" :total="transferTotal" :page-size="transferSize" :current-page="transferPage"
+              @current-change="(p: number) => { transferPage = p; loadTransfers() }" />
+          </div>
+        </template>
+        <el-empty v-else description="还没有转交过物品" :image="'/empty.svg'">
+          <p class="empty-hint">发布拾物时选择「申请转交到招领站」，审批通过后即可由站点统一管理。</p>
+          <el-button type="primary" round @click="router.push('/publish?type=found')">去发布拾物</el-button>
+        </el-empty>
       </el-tab-pane>
 
       <el-tab-pane label="账号设置" name="settings">
@@ -189,155 +273,84 @@ const claimStatusText = computed(() => ({
         </div>
       </el-tab-pane>
     </el-tabs>
+
+    <el-drawer v-model="transferDetail" title="转交进度" size="480px">
+      <template v-if="activeTransfer">
+        <div class="detail-summary">
+          <b>{{ activeTransfer.itemTitle }}</b>
+          <p>{{ activeTransfer.siteName || '#' + activeTransfer.siteId }} · 提交于 {{ fmtTime(activeTransfer.createTime) }}</p>
+          <span class="lf-tag" :class="TRANSFER_STATUS_MAP[activeTransfer.status]?.cls">{{ TRANSFER_STATUS_MAP[activeTransfer.status]?.text }}</span>
+        </div>
+        <dl class="detail-grid">
+          <dt>转交备注</dt><dd>{{ activeTransfer.remark || '无' }}</dd>
+          <dt>审批人</dt><dd>{{ activeTransfer.reviewerName || '—' }}</dd>
+          <dt>审批时间</dt><dd>{{ fmtTime(activeTransfer.reviewTime) }}</dd>
+          <dt>审批意见</dt><dd>{{ activeTransfer.status !== 'PENDING' ? activeTransfer.remark || '无' : '待审批' }}</dd>
+          <dt>归还进度</dt><dd>{{ activeTransfer.returned ? `已归还（${fmtTime(activeTransfer.returnTime)}）` : '尚未归还' }}</dd>
+        </dl>
+        <h4 class="timeline-title">状态时间线</h4>
+        <el-timeline>
+          <el-timeline-item v-for="n in activeTransfer.timeline" :key="n.key"
+            :type="n.state === 'reject' ? 'danger' : n.state === 'done' ? 'success' : 'primary'"
+            :timestamp="fmtTime(n.time)" placement="top">
+            <b>{{ n.title }}</b><p v-if="n.detail">{{ n.detail }}</p>
+          </el-timeline-item>
+        </el-timeline>
+        <el-button v-if="activeTransfer.status === 'PENDING'" type="danger" plain @click="cancelTransfer(activeTransfer)">撤回申请</el-button>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
 <style scoped>
-.profile-page {
-  padding: 30px 20px 50px;
-}
-.profile-head {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 24px;
-}
-.profile-head h2 {
-  font-size: 20px;
-}
-.profile-head p {
-  font-size: 13px;
-  color: var(--lf-text-3);
-  margin-top: 3px;
-}
-.profile-head .profile-hint {
-  color: var(--lf-text-2);
-}
-.profile-head .el-button {
-  margin-left: auto;
-}
-.profile-avatar--empty {
-  background: #eef2f8;
-  color: #94a3b8;
-}
-.profile-tabs {
-  margin-top: 18px;
-}
-.guest-panel {
-  display: flex;
-  align-items: center;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 18px;
-  padding: 46px 24px 44px;
-  text-align: center;
-  background: linear-gradient(180deg, #fff 0%, #f8fbff 100%);
-}
-.guest-panel__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 62px;
-  height: 62px;
-  border-radius: 50%;
-  background: var(--lf-primary-soft);
-  color: var(--lf-primary);
-}
-.guest-panel h3 {
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--lf-text);
-}
-.guest-panel p {
-  max-width: 420px;
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--lf-text-2);
-}
-.guest-panel__tabs {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
-  margin: 6px 0 10px;
-}
-.guest-panel__tabs span {
-  padding: 5px 14px;
-  border: 1px solid var(--lf-border);
-  border-radius: 999px;
-  background: #fff;
-  font-size: 12px;
-  color: var(--lf-text-3);
-}
-.guest-panel__alt {
-  padding: 4px 8px;
-  border: none;
-  background: transparent;
-  color: var(--lf-primary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: color 180ms ease;
-}
-.guest-panel__alt:hover {
-  color: #1d4ed8;
-}
-.guest-panel__alt:focus-visible {
-  outline: 2px solid var(--lf-primary);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 18px;
-}
-.mine-ops {
-  display: flex;
-  justify-content: flex-end;
-  gap: 4px;
-  padding: 6px 10px;
-  background: #fff;
-  border: 1px solid var(--lf-border);
-  border-top: none;
-  border-radius: 0 0 var(--lf-radius) var(--lf-radius);
-}
-.claim-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.claim-item {
-  padding: 16px 20px;
-}
-.claim-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-.claim-item p {
-  font-size: 13.5px;
-  color: var(--lf-text-2);
-}
-.settings-form {
-  padding: 26px;
-  max-width: 560px;
-}
-.settings-form h4 {
-  font-size: 15px;
-  margin-bottom: 16px;
-}
-@media (max-width: 520px) {
-  .profile-head {
-    flex-wrap: wrap;
-  }
-  .guest-panel {
-    padding: 34px 16px;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .guest-panel__alt {
-    transition: none;
-  }
-}
+.profile-page { padding: 30px 20px 50px; }
+.profile-head { display: flex; align-items: center; gap: 18px; padding: 24px; }
+.profile-head h2 { font-size: 20px; }
+.profile-head p { font-size: 13px; color: var(--lf-text-3); margin-top: 3px; }
+.profile-head .profile-hint { color: var(--lf-text-2); }
+.profile-head .el-button { margin-left: auto; }
+.profile-avatar--empty { background: #eef2f8; color: #94a3b8; }
+.profile-tabs { margin-top: 18px; }
+.tab-badge { margin-left: 6px; }
+.guest-panel { display: flex; align-items: center; flex-direction: column; gap: 12px; margin-top: 18px; padding: 46px 24px 44px; text-align: center; background: linear-gradient(180deg, #fff 0%, #f8fbff 100%); }
+.guest-panel__icon { display: flex; align-items: center; justify-content: center; width: 62px; height: 62px; border-radius: 50%; background: var(--lf-primary-soft); color: var(--lf-primary); }
+.guest-panel h3 { font-size: 17px; font-weight: 600; color: var(--lf-text); }
+.guest-panel p { max-width: 420px; font-size: 13px; line-height: 1.7; color: var(--lf-text-2); }
+.guest-panel__tabs { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin: 6px 0 10px; }
+.guest-panel__tabs span { padding: 5px 14px; border: 1px solid var(--lf-border); border-radius: 999px; background: #fff; font-size: 12px; color: var(--lf-text-3); }
+.guest-panel__alt { padding: 4px 8px; border: none; background: transparent; color: var(--lf-primary); font-size: 13px; cursor: pointer; transition: color 180ms ease; }
+.guest-panel__alt:hover { color: #1d4ed8; }
+.guest-panel__alt:focus-visible { outline: 2px solid var(--lf-primary); outline-offset: 2px; border-radius: 4px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 18px; }
+.mine-ops { display: flex; justify-content: flex-end; gap: 4px; padding: 6px 10px; background: #fff; border: 1px solid var(--lf-border); border-top: none; border-radius: 0 0 var(--lf-radius) var(--lf-radius); }
+.claim-list { display: flex; flex-direction: column; gap: 14px; }
+.claim-item { padding: 16px 20px; }
+.claim-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.claim-item p { font-size: 13.5px; color: var(--lf-text-2); }
+.settings-form { padding: 26px; max-width: 560px; }
+.settings-form h4 { font-size: 15px; margin-bottom: 16px; }
+.transfer-loading { min-height: 180px; }
+.transfer-error { min-height: 200px; }
+.transfer-hint { margin-bottom: 16px; font-size: 13px; line-height: 1.7; color: var(--lf-text-3); }
+.empty-hint { margin-bottom: 14px; font-size: 13px; line-height: 1.7; color: var(--lf-text-3); }
+.transfer-card { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 18px; text-align: left; border: 1px solid var(--lf-border); background: #fff; cursor: pointer; transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease; }
+.transfer-card:hover { transform: translateY(-2px); border-color: var(--lf-primary-light); box-shadow: var(--lf-shadow-sm); }
+.transfer-card:focus-visible { outline: 2px solid var(--lf-primary); outline-offset: 2px; }
+.transfer-cover { width: 58px; height: 58px; flex-shrink: 0; border-radius: 10px; background: var(--lf-bg); }
+.transfer-cover--empty { display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--lf-text-3); }
+.transfer-main { flex: 1; min-width: 0; }
+.transfer-main p { margin-top: 5px; font-size: 12.5px; color: var(--lf-text-3); }
+.transfer-return { color: var(--lf-success) !important; }
+.transfer-arrow { color: var(--lf-text-3); flex-shrink: 0; }
+.pager { display: flex; justify-content: center; margin-top: 20px; }
+.detail-summary { padding-bottom: 16px; border-bottom: 1px solid var(--lf-border); }
+.detail-summary b { font-size: 16px; word-break: break-all; }
+.detail-summary p { margin: 6px 0 12px; font-size: 12.5px; color: var(--lf-text-3); }
+.detail-grid { display: grid; grid-template-columns: 84px 1fr; gap: 10px 12px; padding: 18px 0; margin: 0; font-size: 13px; }
+.detail-grid dt { color: var(--lf-text-3); }
+.detail-grid dd { margin: 0; word-break: break-all; }
+.timeline-title { font-size: 14px; font-weight: 600; margin: 8px 0 14px; }
+.timeline-title + :deep(.el-timeline) p { font-size: 12.5px; color: var(--lf-text-3); margin-top: 4px; }
+@media (max-width: 520px) { .profile-head { flex-wrap: wrap; } .guest-panel { padding: 34px 16px; } }
+@media (prefers-reduced-motion: reduce) { .guest-panel__alt, .transfer-card { transition: none; } }
 </style>

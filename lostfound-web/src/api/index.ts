@@ -7,10 +7,17 @@ import type {
   ItemQuery,
   ItemVO,
   MatchVO,
+  MeVO,
   Message,
   PageResult,
   QrStatusVO,
   QrTicketVO,
+  ReturnRecordVO,
+  SiteManager,
+  SiteStatsVO,
+  SiteVO,
+  SourceInfoVO,
+  TransferVO,
   User,
 } from '@/types'
 
@@ -20,7 +27,7 @@ export const authApi = {
     request.post<never, { token: string; user: User }>('/api/auth/login', data),
   register: (data: { username: string; password: string; nickname: string; phone?: string }) =>
     request.post<never, { token: string; user: User }>('/api/auth/register', data),
-  me: () => request.get<never, User>('/api/auth/me'),
+  me: () => request.get<never, MeVO>('/api/auth/me'),
   updateProfile: (data: Partial<User>) => request.put('/api/auth/profile', data),
   changePassword: (data: { oldPassword: string; newPassword: string }) =>
     request.put('/api/auth/password', data),
@@ -87,13 +94,54 @@ export const focusApi = {
 /* ---------------- 招领站 ---------------- */
 export const siteApi = {
   page: (params: { keyword?: string; page?: number; size?: number }) =>
-    request.get<never, PageResult<FoundSite>>('/api/foundsite/page', { params }),
+    request.get<never, PageResult<SiteVO>>('/api/foundsite/page', { params }),
   detail: (id: number) => request.get<never, FoundSite>(`/api/foundsite/${id}`),
   managers: (id: number) =>
-    request.get<never, { userId: number; nickname: string }[]>(`/api/foundsite/${id}/managers`),
+    request.get<never, SiteManager[]>(`/api/foundsite/${id}/managers`),
+  /** 当前用户可管理的站点（全局 ADMIN 为全部） */
+  mine: () => request.get<never, FoundSite[]>('/api/foundsite/mine'),
+  /** 站内物品清单：仅站点发布或转交审批通过的物品；manage=true 需站点管理员 */
+  items: (id: number, params: {
+    keyword?: string
+    category?: string
+    status?: string
+    sourceType?: string
+    manage?: boolean
+    page?: number
+    size?: number
+  }) => request.get<never, PageResult<ItemVO>>(`/api/foundsite/${id}/items`, { params }),
+  stats: (id: number) => request.get<never, SiteStatsVO>(`/api/foundsite/${id}/stats`),
   create: (data: Partial<FoundSite>) => request.post<never, number>('/api/foundsite', data),
   update: (id: number, data: Partial<FoundSite>) => request.put(`/api/foundsite/${id}`, data),
   remove: (id: number) => request.delete(`/api/foundsite/${id}`),
+  /** 全量覆盖式管理员名单 */
+  setManagers: (id: number, userIds: number[]) =>
+    request.put(`/api/foundsite/${id}/managers`, userIds),
+  /** 站点管理员代发布 */
+  publishItem: (id: number, data: Record<string, unknown>) =>
+    request.post<never, number>(`/api/foundsite/${id}/items`, data),
+  transfers: (id: number, params: { status?: string; keyword?: string; page?: number; size?: number }) =>
+    request.get<never, PageResult<TransferVO>>(`/api/foundsite/${id}/transfers`, { params }),
+  claims: (id: number, params: { status?: string; page?: number; size?: number }) =>
+    request.get<never, PageResult<ClaimVO>>(`/api/foundsite/${id}/claims`, { params }),
+  returns: (id: number, params: { page?: number; size?: number }) =>
+    request.get<never, PageResult<ReturnRecordVO>>(`/api/foundsite/${id}/returns`, { params }),
+  registerReturn: (id: number, data: Record<string, unknown>) =>
+    request.post<never, number>(`/api/foundsite/${id}/returns`, data),
+}
+
+/* ---------------- 个人转交 ---------------- */
+export const transferApi = {
+  mine: (params: { page?: number; size?: number }) =>
+    request.get<never, PageResult<TransferVO>>('/api/transfer/mine', { params }),
+  detail: (id: number) => request.get<never, TransferVO>(`/api/transfer/${id}`),
+  source: (foundId: number) =>
+    request.get<never, SourceInfoVO>(`/api/transfer/source/${foundId}`),
+  apply: (data: { foundId: number; siteId: number; remark?: string }) =>
+    request.post<never, number>('/api/transfer', data),
+  cancel: (id: number) => request.put(`/api/transfer/${id}/cancel`),
+  review: (id: number, data: { approve: boolean; remark?: string }) =>
+    request.put(`/api/transfer/${id}/review`, data),
 }
 
 /* ---------------- 消息 ---------------- */

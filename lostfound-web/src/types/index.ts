@@ -10,6 +10,16 @@ export interface User {
   role: 'USER' | 'ADMIN'
   status: number
   createTime: string
+  /** 仅 /api/auth/me 返回：可管理的招领站 ID */
+  managedSiteIds?: number[]
+  /** 仅 /api/auth/me 返回：是否可进入站点管理后台 */
+  siteManager?: boolean
+}
+
+/** 当前登录用户完整信息 */
+export interface MeVO extends User {
+  managedSiteIds: number[]
+  siteManager: boolean
 }
 
 export interface ItemVO {
@@ -34,6 +44,12 @@ export interface ItemVO {
   contact?: string
   status: 'WAITING' | 'CLAIMED' | 'FINISHED' | 'OFFLINE'
   reviewStatus: 'PENDING' | 'APPROVED' | 'REJECTED'
+  /** 站点来源：PERSONAL / SITE / TRANSFER */
+  sourceType?: SourceType
+  /** 站点转交状态 */
+  transferStatus?: TransferStatus
+  /** 源头登记人 */
+  submitUserId?: number
   viewCount: number
   focusCount: number
   commentCount: number
@@ -67,6 +83,8 @@ export interface ItemQuery {
   /** 用户经度（gcj02），仅 distance 排序使用 */
   userLng?: number
   siteId?: number
+  sourceType?: SourceType
+  transferStatus?: TransferStatus
   page?: number
   size?: number
 }
@@ -101,7 +119,7 @@ export interface Message {
   id: number
   title: string
   content: string
-  type: 'MATCH' | 'CLAIM' | 'SYSTEM'
+  type: 'MATCH' | 'CLAIM' | 'SYSTEM' | 'TRANSFER' | 'RETURN' | 'SITE'
   relatedId?: number
   isRead: number
   createTime: string
@@ -127,6 +145,113 @@ export interface FoundSite {
   openTime?: string
   description?: string
   createTime: string
+}
+
+/** 站点列表（含批量统计字段） */
+export interface SiteVO extends FoundSite {
+  managerCount: number
+  itemCount: number
+}
+
+export interface SiteManager {
+  id: number
+  userId: number
+  nickname: string
+}
+
+/* ---------------- 招领站管理 ---------------- */
+
+export type TransferStatus = 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+export type SourceType = 'PERSONAL' | 'SITE' | 'TRANSFER'
+export type ReturnWay = 'CLAIM' | 'ONSITE'
+
+export interface TimelineNode {
+  key: string
+  title: string
+  detail?: string
+  time?: string
+  state: 'done' | 'current' | 'reject' | 'pending'
+}
+
+export interface TransferVO {
+  id: number
+  foundId: number
+  itemTitle: string
+  itemCategory?: string
+  itemImages: string[]
+  itemStatus?: string
+  siteId: number
+  siteName?: string
+  fromUserId: number
+  fromNickname?: string
+  status: TransferStatus
+  remark?: string
+  reviewerId?: number
+  reviewerName?: string
+  reviewTime?: string
+  createTime: string
+  updateTime?: string
+  returned?: boolean
+  returnTime?: string
+  returnWay?: ReturnWay
+  timeline: TimelineNode[]
+}
+
+export interface ReturnRecordVO {
+  id: number
+  foundId: number
+  itemTitle: string
+  siteId?: number
+  siteName?: string
+  claimId?: number
+  way: ReturnWay
+  receiverName?: string
+  receiverPhone?: string
+  evidence: string[]
+  remark?: string
+  operatorId: number
+  operatorName?: string
+  returnTime: string
+  createTime?: string
+}
+
+export interface SourceInfoVO {
+  foundId: number
+  title: string
+  category?: string
+  description?: string
+  address?: string
+  contact?: string
+  images: string[]
+  foundTime?: string
+  createTime: string
+  status?: string
+  sourceType?: SourceType
+  transferStatus?: TransferStatus
+  originalUserId: number
+  originalNickname?: string
+  originalPhone?: string
+  siteId?: number
+  siteName?: string
+  transferId?: number
+  fromUserId?: number
+  fromNickname?: string
+  submitTime?: string
+  transferRemark?: string
+  reviewerId?: number
+  reviewerName?: string
+  reviewTime?: string
+  reviewRemark?: string
+  returns: ReturnRecordVO[]
+}
+
+export interface SiteStatsVO {
+  siteId: number
+  pendingTransfers: number
+  pendingClaims: number
+  siteItems: number
+  returnedItems: number
+  todayHandled: number
 }
 
 export interface AdminStats {
@@ -165,4 +290,18 @@ export const STATUS_MAP: Record<string, { text: string; cls: string }> = {
   CLAIMED: { text: '待确认', cls: 'lf-tag--claimed' },
   FINISHED: { text: '已完成', cls: 'lf-tag--finished' },
   OFFLINE: { text: '已下架', cls: 'lf-tag--offline' },
+}
+
+export const TRANSFER_STATUS_MAP: Record<string, { text: string; cls: string }> = {
+  NONE: { text: '未转交', cls: 'lf-tag--muted' },
+  PENDING: { text: '待审批', cls: 'lf-tag--claimed' },
+  APPROVED: { text: '已入库', cls: 'lf-tag--finished' },
+  REJECTED: { text: '已驳回', cls: 'lf-tag--danger' },
+  CANCELLED: { text: '已撤回', cls: 'lf-tag--muted' },
+}
+
+export const SOURCE_TYPE_MAP: Record<string, string> = {
+  PERSONAL: '个人登记',
+  SITE: '站点发布',
+  TRANSFER: '转交入库',
 }

@@ -76,6 +76,69 @@ node remote-deploy.js web       # 上传 Web dist + Nginx 配置，reload，HTTP
 >
 > 首次部署还需额外设置 `$env:LOSTFOUND_DB_PASSWORD`、`$env:LOSTFOUND_WX_SECRET`（可选 `$env:LOSTFOUND_JWT_SECRET`、`$env:LOSTFOUND_WX_APPID`）。重复部署时脚本会从服务端 `/etc/lostfound/lostfound.env` 回读已生效的值，避免明文密钥进入命令行，同时保证 `JWT_SECRET` 不被轮换、线上旧 token 继续有效；如需强制轮换，显式设置对应环境变量即可。
 
+## 招领站管理功能上线（顺序强制：先迁移数据库，再部署后端）
+
+本次只改 Web 与后端，小程序两套工程与构建产物均不改动。新增 `found_transfer` / `found_return` 两张表，并在 `found` 增加 `source_type`、`transfer_status`、`submit_user_id`、`site_approved_by`、`site_approved_at` 五列与 `idx_site_transfer` 索引；**后端实体已包含这些字段，未迁移就部署会出现 `Unknown column`**。
+
+```powershell
+# 1) 本地构建（已验证通过）
+cd lostfound-server; mvn -q -DskipTests package
+cd ../lostfound-web; npm run build
+
+# 2) 数据库迁移（临时运维脚本，不入库；口令只从环境变量注入）
+cd C:/Users/John/AppData/Local/Temp/dbtool
+$env:LOSTFOUND_DB_PASSWORD = '<数据库口令>'
+node site-mgmt-migrate.js survey
+node site-mgmt-migrate.js dry-run
+node site-mgmt-migrate.js apply     # 输出 14 位备份后缀，务必记录
+node site-mgmt-migrate.js verify
+
+# 3) 部署（禁止 all，避免重复执行 install）
+cd <仓库>/deploy
+$env:LOSTFOUND_SSH_PASSWORD = '<服务器 SSH 口令>'
+node remote-deploy.js backend       # 覆盖运行中的 jar 后脚本会 systemctl restart
+node remote-deploy.js web
+```
+
+等价的手工 SQL 见 `lostfound-server/src/main/resources/sql/migration-site-management.sql`；`schema.sql` 已同步，新装库无需再跑迁移脚本。
+
+### 迁移脚本行为
+
+- `survey`：打印 MySQL 版本、`found`/`foundsite`/`foundsite_manager` 行数、来源分布，不写库。
+- `dry-run`：列出待执行 DDL 与预计回填行数，不写库。
+- `apply`：先 `CREATE TABLE site_mgmt_bak_<时间戳> LIKE found` + 全表快照和 `_meta` 元数据表，再按 `information_schema` 逐项幂等建表/加列/加索引；回填放在事务内并校验行数（MySQL 5.6 的 DDL 隐式提交，故快照与元数据用于回滚）。
+- `verify`：校验新表、新列、索引、存量站点物品回填与源头登记人非空。
+- `rollback <后缀>`：按元数据撤销本次新增的索引/列/表，校验 `found` 列结构与快照一致；只撤销结构，不删除业务行；检测到 `TRANSFER`/`PENDING` 新业务数据或新表已有记录时**拒绝回滚**并提示先导出。快照表与元数据表保留，确认无误后人工清理。
+
+### 2026-11-09 实际上线记录
+
+- 数据库迁移已在线上执行：`apply` + `verify` 全部通过；`found=186` 行，其中 `site_id` 非空 `143` 行已回填为 `SITE/APPROVED`，`submit_user_id` 补齐 186 行；新增 2 张表、5 列、`idx_site_transfer` 索引。
+- 快照与元数据：`site_mgmt_bak_20261109140607` / `site_mgmt_bak_20261109140607_meta`（保留，未删除）。回滚命令：`LOSTFOUND_DB_PASSWORD=*** node site-mgmt-migrate.js rollback 20261109140607`（仅在无新转交业务数据时可执行）。
+- 首次 `apply` 因运维脚本元数据表 DDL 缺右括号、`metaTable` 误用 `async` 失败，仅生成了一张孤儿快照；脚本已修复并新增 `clean-orphans` 模式，孤儿快照 `site_mgmt_bak_20261109140450` 已清理。
+- 后端 `remote-deploy.js backend` 与 Web `remote-deploy.js web` 均已执行，`systemctl is-active lostfound=active`，本机 health=200，HTTPS=200。
+- 线上只读回归 `verify-site-management.js`：**27/27 通过**（站点分页统计字段、站点清单分页与可见性、found/lost 原接口兼容、`/api/auth/me` 站点管理范围、`/api/foundsite/mine` 与 `stats`、新端点已注册、SPA 回退 7 条路径、入口 JS 与 6 个新页面 chunk 均可访问）。
+- 重启时旧进程 shutdown hook 打印过 `NoClassDefFoundError: org/apache/catalina/Lifecycle$SingleUse`，原因是原 jar 被覆盖时旧 JVM 仍在退出；新进程已正常启动且日志无新增 ERROR，属无害噪声。写入类端到端流程（转交申请→审批→归还）未在线上造测试数据，需在真实业务中验证。
+
+### 上线验收清单
+
+- [x] `node site-mgmt-migrate.js verify` 全部通过，存量 `site_id` 非空物品仍可在站点清单查询
+- [x] `https://www.globalfinding.com/api/foundsite/page?page=1&size=1` → 200，响应含 `managerCount` / `itemCount`
+- [x] `GET /api/foundsite/{id}/items` 返回 `PageResult<ItemVO>`，且不含 `transfer_status=PENDING` 的物品
+- [ ] 全局 ADMIN 登录 `/admin/sites` 可为同一站点配置多名管理员，保存后列表人数正确（需 UI 人工点验）
+- [x] 站点管理员登录 `/api/auth/me` 返回 `siteManager=true` 与 `managedSiteIds`，顶栏出现「招领站管理」，可进入 `/manage`（已建专用单站点验证账号，接口回归 12/12 通过）
+- [x] 跨站点调用 `stats` 返回 403「无权管理该招领站」；普通用户访问 `/manage` 被路由守卫重定向（守卫逻辑已核对，待人工点验）
+- [x] 修复登录后未即时刷新 `/api/auth/me` 导致顶栏不显示「招领站管理」入口的问题：`setSession` 登录后主动刷新，账号密码登录、注册与扫码登录统一生效，Web 已重新构建部署
+- [ ] 发布拾物选择站点 → 生成 `PENDING` 转交单 → 个人中心「我的转交」可见 → 站点审批通过后在 `/manage/items` 与站点详情页可见 → 审批意见与时间线正确（需真实业务点验，未在线上造数据）
+- [ ] 认领审批通过 / 现场归还登记都会写 `found_return`、把物品置 `FINISHED` 并通知原始登记人（需真实业务点验）
+- [ ] 源头信息抽屉展示原始登记人、联系方式、转交链路与归还记录（需真实业务点验）
+- [x] `https://www.globalfinding.com`、`/found`、`/lost`、`/admin`、`/manage`、`/profile` SPA 回退均 200；`/api/found/latest` 缓存仍可用
+
+### 回滚方式
+
+1. 结构回滚（仅适用于尚未产生新业务数据时）：`node site-mgmt-migrate.js rollback <14位后缀>`。
+2. 代码回滚：部署上一版 jar（`remote-deploy.js backend` 会保留 `.bak`）与上一版 Web `dist`，或 `git revert` 本次提交后重新构建部署。
+3. **已有新业务数据时不要回滚结构**，否则 `found_transfer` / `found_return` 中的审批与归还记录会丢失；先导出两张表再人工处理。
+
 ## 环境变量（`/etc/lostfound/lostfound.env`）
 
 参考 `lostfound.env.example`。生产必须设置：`DB_PASSWORD`、`JWT_SECRET`、`WX_APPID`、`WX_SECRET`、`UPLOAD_BASE_URL`、`SERVER_ADDRESS=127.0.0.1`。
