@@ -94,18 +94,32 @@ export function subscribeLocation(cb) {
  */
 export function ensurePrivacyAuthorize() {
   return new Promise((resolve) => {
-    if (typeof uni.getPrivacySetting !== 'function') return resolve(true)
-    uni.getPrivacySetting({
-      success: (res) => {
-        if (!res.needAuthorization) return resolve(true)
-        if (typeof uni.requirePrivacyAuthorize !== 'function') return resolve(false)
-        uni.requirePrivacyAuthorize({
-          success: () => resolve(true),
-          fail: () => resolve(false),
-        })
-      },
-      fail: () => resolve(true), // 无法判断时继续尝试，由接口自身兜底
-    })
+    let done = false
+    let timer = null
+    const finish = (ok) => {
+      if (done) return
+      done = true
+      if (timer) clearTimeout(timer)
+      resolve(ok)
+    }
+    // 部分基础库 / 开发者工具里回调可能不触发，必须有超时兜底，否则点击后永远无反应
+    timer = setTimeout(() => finish(true), 1500)
+    try {
+      if (typeof uni.getPrivacySetting !== 'function') return finish(true)
+      uni.getPrivacySetting({
+        success: (res) => {
+          if (!res.needAuthorization) return finish(true)
+          if (typeof uni.requirePrivacyAuthorize !== 'function') return finish(true)
+          uni.requirePrivacyAuthorize({
+            success: () => finish(true),
+            fail: () => finish(true), // 不阻断：由业务接口返回真实错误再提示
+          })
+        },
+        fail: () => finish(true),
+      })
+    } catch (e) {
+      finish(true)
+    }
   })
 }
 

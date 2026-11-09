@@ -49,12 +49,18 @@
         </view>
       </view>
 
-      <!-- 地图选点：选点接口不可用时仍可手动输入地点 -->
+      <!-- 地图选点：选点接口不可用时仍可手动输入地址，或用当前位置写入坐标 -->
       <view class="form-item">
         <text class="label">{{ type === 'found' ? '拾获地点' : '丢失地点' }}</text>
         <view class="location-row">
           <input v-model="form.address" class="input location-input" placeholder="输入地点，或点击右侧选点（可选）" />
           <view class="location-btn" @tap="chooseLocation">选点</view>
+        </view>
+        <view class="location-tip">
+          <text @tap="useCurrentLocation">选点打不开？用当前位置</text>
+          <text v-if="form.longitude != null && form.latitude != null" class="location-coords">
+            · 已选 {{ form.longitude }}, {{ form.latitude }}
+          </text>
         </view>
       </view>
 
@@ -100,14 +106,14 @@ onShow(() => {
   }
 })
 
-/** 隐私接口失败时给出真实原因，避免点击后毫无反应；主动取消不打扰用户 */
+/** 任何失败都要给出真实原因，避免点击后毫无反应；主动取消不打扰用户 */
 const showApiError = (title, err) => {
   const msg = (err && err.errMsg) || '未知错误'
   if (/cancel/i.test(msg)) return
   console.error('[publish]', title, msg)
   uni.showModal({
     title,
-    content: `${msg}\n若为权限问题，请在微信公众平台开通接口并配置用户隐私保护指引`,
+    content: `${msg}\n若为权限问题，请在微信公众平台开通该接口并配置用户隐私保护指引`,
     showCancel: false,
   })
 }
@@ -127,10 +133,8 @@ const uploadPicked = async (paths) => {
   }
 }
 
-const chooseImage = async () => {
-  if (!(await ensurePrivacyAuthorize())) {
-    return uni.showToast({ title: '请先同意隐私协议', icon: 'none' })
-  }
+const chooseImage = () => {
+  // 图片选择不依赖地理位置隐私授权；失败时弹窗提示，不再静默吞掉
   const count = 6 - images.value.length
   const onFail = (err) => showApiError('选择图片失败', err)
   // 基础库 2.21+ 推荐 chooseMedia，旧版本回退 chooseImage
@@ -153,9 +157,8 @@ const chooseImage = async () => {
 const removeImage = (i) => images.value.splice(i, 1)
 
 const chooseLocation = async () => {
-  if (!(await ensurePrivacyAuthorize())) {
-    return uni.showToast({ title: '请先同意隐私协议', icon: 'none' })
-  }
+  // 隐私授权只做尽力触发，不阻断接口调用：由 chooseLocation 自身返回真实错误再提示
+  await ensurePrivacyAuthorize()
   uni.chooseLocation({
     success: (res) => {
       form.address = res.address || res.name
@@ -163,6 +166,21 @@ const chooseLocation = async () => {
       form.latitude = res.latitude
     },
     fail: (err) => showApiError('打开地图选点失败', err),
+  })
+}
+
+/** 选点接口不可用时（未开通 / 隐私协议未配置），用 getLocation 写入当前坐标兜底 */
+const useCurrentLocation = async () => {
+  await ensurePrivacyAuthorize()
+  uni.getLocation({
+    type: 'gcj02',
+    success: (res) => {
+      form.longitude = res.longitude
+      form.latitude = res.latitude
+      if (!form.address) form.address = '当前位置'
+      uni.showToast({ title: '已写入当前位置', icon: 'none' })
+    },
+    fail: (err) => showApiError('定位失败', err),
   })
 }
 
@@ -265,6 +283,14 @@ const submit = async () => {
   border-radius: 12rpx;
   padding: 18rpx 24rpx;
   font-size: 26rpx;
+}
+.location-tip {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  color: #2563eb;
+}
+.location-coords {
+  color: #9ca3af;
 }
 .grid {
   display: flex;

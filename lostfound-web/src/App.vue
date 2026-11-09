@@ -128,7 +128,7 @@ const onCommand = (cmd: string) => {
     <footer class="app-footer">
       <div class="lf-container">
         <p>百觅 · 让每一份遗失都有归途</p>
-        <p class="footer-sub">失物招领平台 · SpringBoot + Vue3 + uni-app 重构版</p>
+        <p class="footer-sub">失物招领平台</p>
       </div>
     </footer>
 
