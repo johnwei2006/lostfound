@@ -262,7 +262,7 @@ nginx -t && systemctl reload nginx
 ## 已知限制与建议
 
 - MySQL 5.6 不支持 JSON 列，`images` 用 TEXT 存 JSON 字符串；Hikari 连接池 20，MySQL `max_connections=151`，单机足够。
-- 迁移后的 `category` 曾是旧系统 `objectType` 数字编码（如 `"2"`），按中文枚举筛选会查不到；已于 2026-11-08 全量归一为 8 类，详见下方「物品类别归一」。
+- 迁移后的 `category` 曾是旧系统 `objectType` 数字编码（如 `"2"`），2026-11-08 曾全量归一为旧 8 类；2026-11-10 起已按 `config/item-categories.json` 重定义为 12 类并撤销查询别名兼容，详情见主 README 与下方历史记录。
 - 旧库 1 条双重编码昵称已修复为「小周不剃光头」，其余数据保持原样。
 - `JWT_SECRET` 已更换，旧 token 全部失效，用户重新登录即可。
 - 默认管理员 `admin / admin123`，**上线后请立即改密**。
@@ -271,7 +271,9 @@ nginx -t && systemctl reload nginx
 - 后端 CORS 当前为 `allowedOriginPatterns("*")`；由于 Web 与小程序均同域访问，可后续收紧为 `https://www.globalfinding.com`。
 - 图片经 Thumbnailator 重编码后体积可能增大，后续可按需接入对象存储或调整压缩参数。
 
-## 物品类别归一（2026-11-08）
+## 物品类别归一（2026-11-08，历史记录）
+
+> 本节记录当时的旧 8 类归一；当前线上字典以主 README 的 `config/item-categories.json`（12 类）为准。2026-11-10 起旧 8 类（除「其他」）彻底废止，数字代码与「其它」别名不再兼容。
 
 **问题**：旧库 `objectType` 是 1~18 的数字代码，早期迁移脚本用 `COALESCE(NULLIF(objectType, ''), '其他')` 原样写入 `found/lost.category`；Web 与小程序按 8 个中文枚举精确查询（`qw.eq("category", ...)`），因此按类别筛选几乎全为 0，`MatchService` 的类别候选与后台 `GROUP BY category` 统计也被拆成数字桶。
 
@@ -281,14 +283,34 @@ nginx -t && systemctl reload nginx
 - 执行前建备份表 `category_norm_bak_20261108135138`（`tbl + item_id + old_category`，847 行），事务内 UPDATE，并校验 4 张表总行数不变、变更行数与备份行数一致；失败自动回滚。
 - 回滚：`node category-normalize.js rollback 20261108135138`（备份表保留不删除）。`survey` / `dry-run` / `verify` 均为只读或幂等，可重复执行。
 
-**验收**（线上 HTTPS + 数据库）：
+**验收**（线上 HTTPS + 数据库，当时口径）：
 
 - 8 类逐个筛选：`found` 证件 81 / 钥匙 3 / 手机 18 / 电子产品 24 / 钱包 12 / 书籍 2 / 衣物 3 / 其他 43，合计 186 = 全量；`lost` 证件 107 / 钥匙 12 / 手机 16 / 电子产品 9 / 钱包 41 / 书籍 4 / 衣物 4 / 其他 48，合计 241 = 全量。
 - 详情 `category` 返回中文；`/latest` 缓存条目无残留非标准值；`match_record` 行数不变（0，无冗余类别列，不会自动重算）；后台类别统计只剩 8 类。
 - `verify` 输出 4 张表非标准值均为 0。
 
-**防再犯**：后端新增 `ItemCategory.java` 作为类别唯一事实来源，发布/编辑写入前 `requireValid` 校验（非法类别返回 400），查询 `normalize` 兼容历史数字代码；`dbtool/category-mapping.js` 提供统一 SQL 映射，`migrate.js` / `migrate2.js` / `migrate3.js` / `migrate-found.js` 已改用映射，禁止从旧 dump 重跑时再次写入数字代码。三处界面枚举（Web `types/index.ts`、小程序 `utils/api.js`、CLI 源码副本）保持不变。
+**当时的防再犯（现已被新字典取代）**：后端新增 `ItemCategory.java` 作为类别唯一事实来源，发布/编辑写入前 `requireValid` 校验（非法类别返回 400），查询 `normalize` 曾兼容历史数字代码；`dbtool/category-mapping.js` 提供统一 SQL 映射，`migrate.js` / `migrate2.js` / `migrate3.js` / `migrate-found.js` 已改用映射，禁止从旧 dump 重跑时再次写入数字代码。三处界面枚举当时保持不变；2026-11-10 起改为四处常量由 `config/item-categories.json` 生成，`normalize` 仅去首尾空白，旧值不再转换。
 
-**部署与回归（2026-11-08）**：`node deploy/remote-deploy.js backend` 已上传含类别白名单的新 jar 并 `systemctl restart lostfound`（`health=200`、`active`），重启同时清空 Caffeine 缓存。部署前只读核对 `/etc/lostfound/lostfound.env` 仅含 11 个固定键，重写不会丢失额外配置（当前仍未设置 `WX_QR_ENV_VERSION`，待 1.3.0 发布后按上文追加）。线上回归：8 类筛选与总数一致、`/latest` 无残留非标准值、历史参数 `category=2` → 81 条、`category=4` → 41 条、`category=其它` → 43 条，证明新 jar 的查询兼容已生效。
+**部署与回归（2026-11-08，历史）**：`node deploy/remote-deploy.js backend` 已上传含类别白名单的新 jar 并 `systemctl restart lostfound`（`health=200`、`active`），重启同时清空 Caffeine 缓存。部署前只读核对 `/etc/lostfound/lostfound.env` 仅含 11 个固定键，重写不会丢失额外配置。当时线上回归：8 类筛选与总数一致、`/latest` 无残留非标准值、历史参数 `category=2` → 81 条、`category=4` → 41 条、`category=其它` → 43 条，证明当时新 jar 的查询兼容已生效；该兼容在 2026-11-10 类别重定义后已撤销。
 
 > `remote-deploy.js backend` 重启服务会清空 Caffeine `latestItems` / `siteStats` / `adminOverview` 缓存，因此数据归一后需重新部署一次后端 jar，以刷新首页与后台统计缓存；切勿用 `all`（会重跑 install 的破坏性步骤）。
+
+## 物品类别重定义上线记录（2026-11-10）
+
+- **字典定稿**：`config/item-categories.json`（`version=2`）定义 12 类：`证件证照 / 卡券票据 / 手机通讯 / 数码电子 / 服饰配饰 / 钥匙锁具 / 钱包卡包 / 箱包行李 / 书刊文件 / 生活用品 / 宠物活体 / 其他`。四处界面常量、后端 `ItemCategory.ALL`、`schema.sql` 注释、后台饼图颜色与构建前置 `--check` 已同步；`ItemCategory.LEGACY` / 数字代码 / 中文别名兼容全部删除。
+- **本地验证**：`mvn -q package`（含 `ItemCategoryTest`）、`npm run build`、`npm run build:mp-weixin` 全部通过；两套 uni-app 源码关键文件逐一一致，`dist/build/mp-weixin` 已强同步到 `dist/dev/mp-weixin`，产物内 `CATEGORIES` 均为 12 类。
+- **线上迁移**：`survey` 显示 `found=186`、`lost=242`，合计 428 行；`dry-run` 预计分布之和 428/428，关键词规则 19 条、兜底样例已核对。`apply` 单事务重映射 428 行并 `verify` 全部通过；非法类别 0，快照行数与当前表一致。快照后缀（UTC）`20261109221434`（北京时间 2026-11-10 06:14），保留 `category_redesign_bak_20261109221434_found`、`category_redesign_bak_20261109221434_lost`、`category_redesign_bak_20261109221434_meta`。回滚命令（在临时运维目录执行，仅在 `found/lost` 无新增业务行时可用）：`node with-secret.js node category-redesign-migrate.js rollback 20261109221434`。本次只改 `found.category`、`lost.category`，未触碰 `legacy_*`、`match_record`、`found_transfer`、`found_return` 与上次站点迁移快照。
+- **部署**：按 `backend` → `web` 分阶段执行 `remote-deploy.js`，未使用 `all`。后端重启后 `health=200`、`systemctl is-active lostfound=active`；Web 部署后 `https_api=200`、`https_web=200`。重启同时清空 Caffeine 旧类别缓存。
+- **线上回归**：`verify-category-online.js` **39/39 通过**。新类别筛选之和与总数一致（`found=186`、`lost=242`）；旧 7 个类别、数字代码 `2`/`4`、别名「其它」筛选均返回 0；旧类别发布返回 `code=400` 且提示「请更新到最新版本后重新选择类别」；`/latest` 缓存无旧值；后台 `categoryStats` 为 12 类、合计 428；入口 JS 可访问，线上 Web JS 含新字典，`/lost`、`/found`、`/publish`、`/admin` SPA 回退均 200。新类别写入路径由本地 JUnit 覆盖，未在生产创建测试物品。
+- **小程序 1.4.0 上传状态**：两套源码与 `build/dev` 产物均已含 12 类；`cli.bat upload --project <dist/build/mp-weixin> -v 1.4.0 -d category-dict-v2-12-types` 已尝试两次，均因 `IDE service port disabled` 失败；未伪造 `.ide-status` 或 `.ide` 端口文件。需人工打开微信开发者工具 → 设置 → 安全设置 → 开启服务端口，然后重新执行上传命令或在 IDE 内上传 1.4.0；再到微信公众平台 → 版本管理 → 开发版本 → 提交审核。若 1.3.0 仍在审核/未发布，按平台规则先撤回或发布旧开发版本后再提交 1.4.0。
+- **过渡期提示**：后端、Web 与线上数据已是新 12 类口径；未升级的旧小程序客户端提交旧类别会收到 400 升级提示，旧分享链接按旧类别筛选返回空结果。应尽快完成 1.4.0 上传、审核与发布。临时 SSH 凭据文件已删除，未写入仓库。
+
+## 拾获/丢失日期调整上线记录（2026-11-10）
+
+- **范围**：仅 `found.found_time` / `lost.lost_time`（页面「拾获时间 / 丢失时间」）。`create_time`、`update_time`，以及 `legacy_*`、`match_record`、`found_transfer`、`found_return` 均未改动。
+- **规则**：`新值 = LEAST(DATE_ADD(原值, INTERVAL 4 YEAR), 服务器当前时间)`；NULL 保持 NULL，超过当前时间的值统一封顶。执行时 cutoff 为 `2026-11-10 06:35:34`。
+- **预演**：`survey` 显示 428 行日期字段全部非空；`found=186`、`lost=242`。`dry-run` 预计变化 428 行，其中 7 行封顶（`found` 2 行、`lost` 5 行）；正常偏移样例为 2016 → 2020，封顶样例为 2023/2024/2026 → cutoff。
+- **执行与校验**：单事务 `apply` 更新 428 行并 `verify` 全部通过；快照行数与当前表一致，精确映射不一致 0 行，未来值 0。快照后缀（UTC）`20261109223533`（北京时间 2026-11-10 06:35），保留 `item_date_bak_20261109223533_found`、`item_date_bak_20261109223533_lost`、`item_date_bak_20261109223533_meta`。回滚命令（在临时运维目录执行，仅在 `found/lost` 无新增业务行时可用）：`node with-secret.js node adjust-item-dates.js rollback 20261109223533`。
+- **调整后分布**：`found.found_time` 年份 2020=143 / 2021=22 / 2022=10 / 2023=1 / 2024=4 / 2025=1 / 2026=5；`lost.lost_time` 年份 2019=1 / 2020=30 / 2021=31 / 2022=62 / 2023=42 / 2024=4 / 2025=11 / 2026=61；两表最大值均为 cutoff。
+- **缓存与线上回归**：执行 `systemctl restart lostfound` 清空 `latestItems` 缓存，服务 `active`。`verify-item-date-online.js` **6/6 通过**：`found/lost` 分页、详情与 `/latest` 均 200，`itemTime` 无未来值。
+- **口径说明**：本次只顺延业务上的拾获/丢失日期；列表卡片展示与按发布时间排序仍使用未改动的 `create_time`。如需同步顺延发布时间，应另行评估并单独执行。临时运维脚本不入库，临时连接文件已清理。

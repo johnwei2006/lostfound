@@ -56,7 +56,7 @@ const initPie = (categoryStats: AdminStats['categoryStats']) => {
   pieChart.setOption({
     tooltip: { trigger: 'item', formatter: '{b}: {c} 件 ({d}%)' },
     legend: { orient: 'vertical', right: 0, top: 'center', textStyle: { fontSize: 12 } },
-    color: ['#2563eb', '#3b82f6', '#f97316', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#64748b'],
+    color: ['#2563eb', '#3b82f6', '#f97316', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#64748b', '#06b6d4', '#ec4899', '#84cc16', '#a855f7'],
     series: [
       {
         type: 'pie',

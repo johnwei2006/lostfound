@@ -61,7 +61,9 @@ export const matchApi = {
   setStatus: (id, status) => request({ url: `/api/match/${id}/status`, method: 'PUT', data: { status } }),
 }
 
-export const CATEGORIES = ['证件', '钥匙', '手机', '电子产品', '钱包', '书籍', '衣物', '其他']
+// CATEGORY_DICT_BEGIN
+export const CATEGORIES = ['证件证照', '卡券票据', '手机通讯', '数码电子', '服饰配饰', '钥匙锁具', '钱包卡包', '箱包行李', '书刊文件', '生活用品', '宠物活体', '其他']
+// CATEGORY_DICT_END
 export const STATUS_MAP = {
   WAITING: { text: '待认领', cls: 'lf-tag--waiting' },
   CLAIMED: { text: '待确认', cls: 'lf-tag--claimed' },

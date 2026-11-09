@@ -79,15 +79,20 @@ node site-mgmt-migrate.js rollback <14位后缀>   # 需要时撤销本次新增
 
 ### 物品类别字典（唯一事实来源）
 
-界面固定 8 类：`证件 / 钥匙 / 手机 / 电子产品 / 钱包 / 书籍 / 衣物 / 其他`，三处必须同步：
+当前字典 `config/item-categories.json`（`version=2`）为界面 12 类：`证件证照 / 卡券票据 / 手机通讯 / 数码电子 / 服饰配饰 / 钥匙锁具 / 钱包卡包 / 箱包行李 / 书刊文件 / 生活用品 / 宠物活体 / 其他`。它由线上物品标题分布重新归纳，取代旧 8 类粗粒度字典。
 
-- 后端：`lostfound-server/src/main/java/com/lostfound/common/ItemCategory.java`（写入白名单 + 旧代码查询兼容）
+四处硬编码常量由 `scripts/sync-category-dict.mjs` 按 `CATEGORY_DICT_BEGIN/END` 标记区间统一生成，禁止手工修改：
+
+- 后端：`lostfound-server/src/main/java/com/lostfound/common/ItemCategory.java` 的 `ALL`
 - Web：`lostfound-web/src/types/index.ts` 的 `CATEGORIES`
-- 小程序：`lostfound-uniapp/utils/api.js` 与 `lostfound-uniapp-cli/src/utils/api.js` 的 `CATEGORIES`
+- 小程序 HBuilderX 源码：`lostfound-uniapp/utils/api.js` 的 `CATEGORIES`
+- 小程序 CLI 源码：`lostfound-uniapp-cli/src/utils/api.js` 的 `CATEGORIES`
 
-旧系统用 `objectType` 数字代码（1~18）表示类别，早期迁移脚本原样写入 `found/lost.category`，导致按中文枚举精确筛选查不到数据。2026-11-08 已对线上 `found.category`、`lost.category` 及 `legacy_found/legacy_lost.objectType` 做全量归一（847 行，18 类按语义归并到 8 类，未知值归「其他」），4 张表原始值完整备份到 `category_norm_bak_20261108135138`（可回滚）。归一后总数不变：found 186、lost 241；8 类筛选之和与总数一致，后台类别统计与智能匹配的类别候选恢复正常。
+运行 `node scripts/sync-category-dict.mjs --write` 生成，`--check` 校验四处顺序一致、类别不重复、迁移目标合法、`schema.sql` 两处列注释与后台饼图颜色数；Web 与小程序 CLI 的 `build` / `build:mp-weixin` 已前置该检查。新增或调整类别只需改 JSON 后重新生成，并同步评估存量数据迁移规则。
 
-防再犯：发布/编辑写入前经 `ItemCategory.requireValid` 校验，非法类别返回 400；查询经 `normalize` 把历史数字代码转成中文再精确匹配；历史迁移脚本已改用统一映射（`categorySql`），禁止再原样搬运 `objectType`。新增类别须同时更新上述三处字典并同步存量数据。
+**旧 8 类已彻底废止**：`证件 / 钥匙 / 手机 / 电子产品 / 钱包 / 书籍 / 衣物 / 其他` 中除仍保留的「其他」外均不再是可选项；`ItemCategory.LEGACY`、历史数字代码与中文别名兼容已删除，`normalize` 仅去首尾空白。旧类别写入返回 400 并提示「请更新到最新版本后重新选择类别」，旧类别筛选参数与历史分享链接返回空结果；后台 `GROUP BY category` 统计、`MatchService` 的类别候选集和站点清单筛选均按新列值精确工作。
+
+2026-11-08 的历史归一记录（数字 `objectType` → 旧 8 类，备份 `category_norm_bak_20261108135138`）保留在 `deploy/README.md`，仅用于审计；当时的查询别名兼容现已撤销。本轮存量重映射的审计 SQL 为 `lostfound-server/src/main/resources/sql/migration-category-redesign.sql`，只改 `found.category` / `lost.category`，不触碰 `legacy_*`、`match_record` 等归档与关联表。线上已于 2026-11-10 完成 428 行重映射并部署，快照后缀与回归结果见 `deploy/README.md`。
 
 ## 启动步骤
 

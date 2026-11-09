@@ -176,7 +176,7 @@ public class ItemService {
         if (keyword != null) {
             qw.and(w -> w.like("title", keyword).or().like("description", keyword));
         }
-        // 兼容历史分享链接里的 objectType 数字代码/旧别名，统一转成界面 8 类后再精确匹配
+        // 按新字典精确匹配：normalize 只去空白，旧类别与历史代码不再转换，未知值直接返回空结果
         String category = ItemCategory.normalize(param(q.getCategory()));
         if (category != null) {
             qw.eq("category", category);

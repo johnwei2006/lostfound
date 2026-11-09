@@ -141,6 +141,7 @@ public class FoundSiteService {
                         .or().eq("transfer_status", Found.TRANSFER_APPROVED));
         String kw = clean(keyword);
         if (kw != null) qw.and(w -> w.like("title", kw).or().like("description", kw));
+        // 站点清单同样按新字典精确匹配，旧类别不再做别名转换
         String cat = ItemCategory.normalize(clean(category));
         if (cat != null) qw.eq("category", cat);
         String st = clean(status);
