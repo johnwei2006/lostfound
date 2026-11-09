@@ -13,6 +13,11 @@ const distanceText = computed(() => {
   if (!Number.isFinite(km)) return ''
   return km < 1 ? `${Math.max(1, Math.round(km * 1000))}m` : `${km.toFixed(1)}km`
 })
+/** 发布时间：后端为无时区 ISO 字符串，直接切片避免 iOS 解析异常 */
+const timeText = computed(() => {
+  const raw = props.item.createTime || props.item.itemTime || ''
+  return raw ? String(raw).slice(5, 16).replace('T', ' ') : ''
+})
 
 const goDetail = () => {
   uni.navigateTo({ url: `/pages/detail/detail?type=${props.item.type.toLowerCase()}&id=${props.item.id}` })
@@ -35,6 +40,7 @@ const goDetail = () => {
       <text class="card-title">{{ item.title }}</text>
       <text class="card-desc lf-muted">{{ item.address || item.city || item.category }}</text>
       <text v-if="distanceText" class="card-distance">距您 {{ distanceText }}</text>
+      <text v-if="timeText" class="card-time">发布于 {{ timeText }}</text>
       <view class="card-foot">
         <text class="lf-muted">{{ item.nickname }}</text>
         <text class="lf-muted">👁 {{ item.viewCount }} · ⭐ {{ item.focusCount }}</text>
@@ -89,6 +95,11 @@ const goDetail = () => {
   margin-top: 8rpx;
   font-size: 24rpx;
   color: #2563eb;
+}
+.card-time {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #9ca3af;
 }
 .card-foot {
   margin-top: auto;

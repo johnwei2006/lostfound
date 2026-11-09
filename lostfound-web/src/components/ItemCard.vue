@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Star, View, ChatDotRound, Location } from '@element-plus/icons-vue'
+import dayjs from 'dayjs'
+import { Star, View, ChatDotRound, Location, Clock } from '@element-plus/icons-vue'
 import { STATUS_MAP, type ItemVO } from '@/types'
 
 const props = defineProps<{ item: ItemVO }>()
@@ -16,6 +17,13 @@ const distanceText = computed(() => {
   const km = props.item.distance
   if (typeof km !== 'number' || !Number.isFinite(km) || km < 0) return ''
   return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`
+})
+/** 发布时间；缺少发布时间时回退到拾获/丢失时间 */
+const timeText = computed(() => {
+  const raw = props.item.createTime || props.item.itemTime
+  if (!raw) return ''
+  const d = dayjs(raw)
+  return d.isValid() ? d.format('YYYY MM-DD HH:mm') : ''
 })
 
 const goDetail = () => {
@@ -45,6 +53,9 @@ const goDetail = () => {
       <div class="card-meta">
         <span class="meta-category">{{ item.category }}</span>
         <span v-if="item.city || item.address" class="meta-loc">{{ item.city }}{{ item.address ? ' · ' + item.address : '' }}</span>
+        <span v-if="timeText" class="meta-time" :title="'发布于 ' + timeText">
+          <el-icon :size="12"><Clock /></el-icon>{{ timeText }}
+        </span>
       </div>
       <div class="card-footer">
         <div class="card-author">
@@ -171,6 +182,13 @@ const goDetail = () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.meta-time {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
 }
 .card-footer {
   margin-top: auto;
