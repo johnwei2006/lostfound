@@ -83,6 +83,8 @@ public class TransferService {
     /** 已发布的个人拾物申请转交 */
     @Transactional
     public Long apply(Long foundId, Long siteId, Long userId, String remark) {
+        if (foundId == null) throw new BusinessException("请选择要转交的物品");
+        if (siteId == null) throw new BusinessException("请选择目标招领站");
         Found f = requireFound(foundId);
         if (!Objects.equals(f.getUserId(), userId) && !UserContext.isAdmin()) {
             throw new BusinessException(403, "无权转交他人登记的物品");

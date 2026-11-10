@@ -6,11 +6,13 @@ import lombok.Data;
 
 /**
  * 将已有拾物申请转交到招领站。
+ *
+ * <p>foundId 允许为空：`POST /api/found/{id}/transfer` 走路径携带物品 ID；
+ * `POST /api/transfer` 场景由 {@code TransferService.apply} 兜底校验非空。
  */
 @Data
 public class TransferDTO {
 
-    @NotNull(message = "请选择要转交的物品")
     private Long foundId;
 
     @NotNull(message = "请选择目标招领站")

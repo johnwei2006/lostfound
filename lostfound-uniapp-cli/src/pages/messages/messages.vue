@@ -44,6 +44,7 @@ const tabs = [
   { label: '全部', value: '' },
   { label: '匹配推荐', value: 'MATCH' },
   { label: '认领动态', value: 'CLAIM' },
+  { label: '转交动态', value: 'TRANSFER' },
   { label: '系统', value: 'SYSTEM' },
 ]
 const filter = ref('')
@@ -74,6 +75,8 @@ const open = async (m) => {
   }
   if (m.type === 'MATCH') {
     uni.navigateTo({ url: '/pages/list/list?mode=match' })
+  } else if (m.type === 'TRANSFER') {
+    uni.navigateTo({ url: '/pages/transfer/transfer' })
   }
 }
 const readAll = async () => {
@@ -81,8 +84,8 @@ const readAll = async () => {
   load()
 }
 
-const labelOf = (t) => ({ MATCH: '匹配', CLAIM: '认领', SYSTEM: '系统' }[t] || '通知')
-const colorOf = (t) => ({ MATCH: '#2563eb', CLAIM: '#f97316', SYSTEM: '#6b7280' }[t] || '#6b7280')
+const labelOf = (t) => ({ MATCH: '匹配', CLAIM: '认领', TRANSFER: '转交', SYSTEM: '系统' }[t] || '通知')
+const colorOf = (t) => ({ MATCH: '#2563eb', CLAIM: '#f97316', TRANSFER: '#16a34a', SYSTEM: '#6b7280' }[t] || '#6b7280')
 
 onShow(load)
 onPullDownRefresh(load)

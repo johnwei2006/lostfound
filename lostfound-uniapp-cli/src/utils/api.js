@@ -47,6 +47,17 @@ export const siteApi = {
   page: (query) => request({ url: '/api/foundsite/page', data: query }),
 }
 
+/* ---------------- 站点转交 ---------------- */
+export const transferApi = {
+  mine: (page = 1, size = 10) => request({ url: '/api/transfer/mine', data: { page, size } }),
+  /** 发起转交：物品 ID 走路径，body 传 siteId 与 remark */
+  create: (foundId, data) => request({ url: `/api/found/${foundId}/transfer`, method: 'POST', data }),
+  /** 按物品撤回当前待审批的转交申请 */
+  cancelByItem: (foundId) => request({ url: `/api/found/${foundId}/transfer`, method: 'DELETE' }),
+  /** 按转交单撤回（我的转交列表用） */
+  cancel: (transferId) => request({ url: `/api/transfer/${transferId}/cancel`, method: 'PUT' }),
+}
+
 /* ---------------- 消息 ---------------- */
 export const messageApi = {
   page: (query) => request({ url: '/api/message/page', data: query }),

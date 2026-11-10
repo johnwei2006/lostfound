@@ -1,6 +1,7 @@
 package com.lostfound.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.lostfound.auth.UserContext;
 import com.lostfound.common.BusinessException;
 import com.lostfound.entity.Found;
 import com.lostfound.entity.Lost;
@@ -24,20 +25,34 @@ import java.util.stream.Collectors;
 
 /**
  * 智能匹配服务：
- * 发布失物/拾物后按 类别(40) + 关键词相似度(30) + 空间距离(20) + 时间接近度(10)
- * 计算匹配得分，>=50 分写入 match_record 并向双方发送站内消息。
+ * 候选集仍按「类别完全相同」硬过滤，排序区分度交给三个连续衰减维度：
+ * 类别(30，同类别固定满分) + 时间接近度(25，<=3 天满分，3~30 天线性衰减)
+ * + 空间距离(25，<=2 km 满分，2~50 km 线性衰减) + 关键词相似度(20)。
+ * 得分 >= {@link #THRESHOLD} 写入 match_record，并向双方发送站内消息。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class MatchService {
 
-    private static final double SCORE_CATEGORY = 40;
-    private static final double SCORE_KEYWORD = 30;
-    private static final double SCORE_DISTANCE = 20;
-    private static final double SCORE_TIME = 10;
-    private static final double THRESHOLD = 50;
+    private static final double SCORE_CATEGORY = 30;
+    private static final double SCORE_KEYWORD = 20;
+    private static final double SCORE_DISTANCE = 25;
+    private static final double SCORE_TIME = 25;
+    private static final double THRESHOLD = 45;
     private static final int MAX_MATCHES = 10;
+
+    /** 时间接近度满分区间（天），之后线性衰减到 {@link #TIME_FALLOFF_DAYS} 归零 */
+    private static final long TIME_FULL_DAYS = 3;
+    private static final long TIME_FALLOFF_DAYS = 30;
+    /** 距离接近度满分区间（公里），之后线性衰减到 {@link #DIST_FALLOFF_KM} 归零 */
+    private static final double DIST_FULL_KM = 2;
+    private static final double DIST_FALLOFF_KM = 50;
+    /** 缺失坐标/时间不加分：避免「纯类别匹配」在信息缺失时自动入围 */
+    private static final double MISSING_FACTOR = 0;
+
+    /** 一次打分的完整分解：总分、关键词相似度、公里距离（可空）、天数差（可空） */
+    record MatchScore(double total, double keyword, Double km, Long days) {}
 
     private final FoundMapper foundMapper;
     private final LostMapper lostMapper;
@@ -53,15 +68,9 @@ public class MatchService {
                 .last("limit 200"));
         int saved = 0;
         for (Lost lost : candidates) {
-            double score = computeScore(
-                    titleDesc(found.getTitle(), found.getDescription()),
-                    titleDesc(lost.getTitle(), lost.getDescription()),
-                    found.getLongitude(), found.getLatitude(),
-                    lost.getLongitude(), lost.getLatitude(),
-                    found.getFoundTime() != null ? found.getFoundTime() : found.getCreateTime(),
-                    lost.getLostTime() != null ? lost.getLostTime() : lost.getCreateTime());
-            if (score < THRESHOLD || saved >= MAX_MATCHES) continue;
-            saveMatch(found.getId(), lost.getId(), score, found.getUserId(), lost.getUserId(), found.getTitle(), lost.getTitle());
+            MatchScore s = score(found, lost);
+            if (s.total() < THRESHOLD || saved >= MAX_MATCHES) continue;
+            saveMatch(found, lost, s, true);
             saved++;
         }
         if (saved > 0) {
@@ -78,15 +87,9 @@ public class MatchService {
                 .last("limit 200"));
         int saved = 0;
         for (Found found : candidates) {
-            double score = computeScore(
-                    titleDesc(found.getTitle(), found.getDescription()),
-                    titleDesc(lost.getTitle(), lost.getDescription()),
-                    found.getLongitude(), found.getLatitude(),
-                    lost.getLongitude(), lost.getLatitude(),
-                    found.getFoundTime() != null ? found.getFoundTime() : found.getCreateTime(),
-                    lost.getLostTime() != null ? lost.getLostTime() : lost.getCreateTime());
-            if (score < THRESHOLD || saved >= MAX_MATCHES) continue;
-            saveMatch(found.getId(), lost.getId(), score, found.getUserId(), lost.getUserId(), found.getTitle(), lost.getTitle());
+            MatchScore s = score(found, lost);
+            if (s.total() < THRESHOLD || saved >= MAX_MATCHES) continue;
+            saveMatch(found, lost, s, true);
             saved++;
         }
         if (saved > 0) {
@@ -94,71 +97,118 @@ public class MatchService {
         }
     }
 
-    private void saveMatch(Long foundId, Long lostId, double score,
-                           Long foundUserId, Long lostUserId,
-                           String foundTitle, String lostTitle) {
+    private MatchScore score(Found found, Lost lost) {
+        return computeDetail(
+                titleDesc(found.getTitle(), found.getDescription()),
+                titleDesc(lost.getTitle(), lost.getDescription()),
+                found.getLongitude(), found.getLatitude(),
+                lost.getLongitude(), lost.getLatitude(),
+                found.getFoundTime() != null ? found.getFoundTime() : found.getCreateTime(),
+                lost.getLostTime() != null ? lost.getLostTime() : lost.getCreateTime());
+    }
+
+    /**
+     * 保存一条匹配记录（唯一键防重，已存在时静默跳过）。
+     * @param notify 是否向双方发送站内消息；存量回刷传 false，避免消息轰炸
+     * @return true 表示新建成功，false 表示记录已存在
+     */
+    private boolean saveMatch(Found found, Lost lost, MatchScore s, boolean notify) {
         MatchRecord record = new MatchRecord();
-        record.setFoundId(foundId);
-        record.setLostId(lostId);
-        record.setScore(BigDecimal.valueOf(score).setScale(2, RoundingMode.HALF_UP));
-        record.setReason(buildReason(foundTitle, lostTitle, score));
+        record.setFoundId(found.getId());
+        record.setLostId(lost.getId());
+        record.setScore(BigDecimal.valueOf(s.total()).setScale(2, RoundingMode.HALF_UP));
+        record.setReason(buildReason(found.getTitle(), lost.getTitle(), s));
         record.setStatus(MatchRecord.STATUS_UNREAD);
         record.setCreateTime(LocalDateTime.now());
         try {
             matchRecordMapper.insert(record);
         } catch (DuplicateKeyException e) {
-            return; // 已存在匹配记录
+            return false; // 已存在匹配记录
         }
-        String text = String.format("发现一条疑似匹配：拾物「%s」与失物「%s」相似度 %.0f%%，请查看详情确认。",
-                foundTitle, lostTitle, score);
-        messageService.send(foundUserId, "匹配推荐", text, "MATCH", record.getId());
-        messageService.send(lostUserId, "匹配推荐", text, "MATCH", record.getId());
+        if (notify) {
+            String text = String.format("发现一条疑似匹配：拾物「%s」与失物「%s」相似度 %.0f%%，请查看详情确认。",
+                    found.getTitle(), lost.getTitle(), s.total());
+            messageService.send(found.getUserId(), "匹配推荐", text, "MATCH", record.getId());
+            messageService.send(lost.getUserId(), "匹配推荐", text, "MATCH", record.getId());
+        }
+        return true;
     }
 
-    private String buildReason(String foundTitle, String lostTitle, double score) {
-        StringBuilder sb = new StringBuilder("同类物品，");
-        if (score >= 80) {
-            sb.append("标题与描述高度相似");
-        } else if (score >= 65) {
-            sb.append("描述较为相似");
+    private String buildReason(String foundTitle, String lostTitle, MatchScore s) {
+        StringBuilder sb = new StringBuilder("同类物品");
+        if (s.days() != null) {
+            if (s.days() == 0) {
+                sb.append("，拾获与丢失发生在同一天");
+            } else {
+                sb.append("，拾获与丢失时间相差 ").append(s.days()).append(" 天");
+            }
         } else {
-            sb.append("存在部分相似特征");
+            sb.append("，时间信息不全");
+        }
+        if (s.km() != null) {
+            sb.append(String.format("，地点相距约 %.1f 公里", s.km()));
+        } else {
+            sb.append("，缺少位置信息");
+        }
+        if (foundTitle != null && lostTitle != null && !foundTitle.isBlank() && !lostTitle.isBlank()) {
+            if (s.keyword() >= 0.5) {
+                sb.append("，标题与描述高度相似");
+            } else if (s.keyword() >= 0.2) {
+                sb.append("，描述部分相似");
+            }
         }
         return sb.append("。").toString();
     }
 
-    /** 综合得分计算 */
+    /** 综合得分计算（兼容旧测试入口） */
     double computeScore(String textA, String textB,
                         BigDecimal lngA, BigDecimal latA, BigDecimal lngB, BigDecimal latB,
                         LocalDateTime timeA, LocalDateTime timeB) {
-        double score = SCORE_CATEGORY; // 候选已按类别过滤
+        return computeDetail(textA, textB, lngA, latA, lngB, latB, timeA, timeB).total();
+    }
+
+    /** 完整打分：类别满分底座 + 关键词/距离/时间三个连续衰减维度 */
+    MatchScore computeDetail(String textA, String textB,
+                             BigDecimal lngA, BigDecimal latA, BigDecimal lngB, BigDecimal latB,
+                             LocalDateTime timeA, LocalDateTime timeB) {
+        double score = SCORE_CATEGORY; // 候选已按类别过滤，固定满分底座
 
         // 关键词相似度
         double kw = bigramOverlap(textA, textB);
         score += SCORE_KEYWORD * kw;
 
-        // 空间距离
+        // 空间距离：<=2km 满分，2~50km 线性衰减，缺失坐标给中性分
+        Double km = null;
         if (lngA != null && latA != null && lngB != null && latB != null) {
-            double km = haversine(latA.doubleValue(), lngA.doubleValue(), latB.doubleValue(), lngB.doubleValue());
-            if (km <= 1) score += SCORE_DISTANCE;
-            else if (km <= 5) score += SCORE_DISTANCE * 0.75;
-            else if (km <= 20) score += SCORE_DISTANCE * 0.5;
-            else if (km <= 50) score += SCORE_DISTANCE * 0.25;
+            km = haversine(latA.doubleValue(), lngA.doubleValue(), latB.doubleValue(), lngB.doubleValue());
+            score += SCORE_DISTANCE * distFactor(km);
         } else {
-            score += SCORE_DISTANCE * 0.5; // 缺失坐标给中性分
+            score += SCORE_DISTANCE * MISSING_FACTOR;
         }
 
-        // 时间接近度
+        // 时间接近度：<=3 天满分，3~30 天线性衰减，缺失时间给中性分
+        Long days = null;
         if (timeA != null && timeB != null) {
-            long days = Math.abs(ChronoUnit.DAYS.between(timeA, timeB));
-            if (days <= 3) score += SCORE_TIME;
-            else if (days <= 7) score += SCORE_TIME * 0.7;
-            else if (days <= 15) score += SCORE_TIME * 0.4;
-            else if (days <= 30) score += SCORE_TIME * 0.2;
+            days = Math.abs(ChronoUnit.DAYS.between(timeA, timeB));
+            score += SCORE_TIME * timeFactor(days);
         } else {
-            score += SCORE_TIME * 0.5;
+            score += SCORE_TIME * MISSING_FACTOR;
         }
-        return Math.min(score, 100);
+        return new MatchScore(Math.min(score, 100), kw, km, days);
+    }
+
+    /** 距离得分系数：<=2km 满分，随后到 50km 线性衰减为 0 */
+    double distFactor(double km) {
+        if (km <= DIST_FULL_KM) return 1;
+        if (km >= DIST_FALLOFF_KM) return 0;
+        return (DIST_FALLOFF_KM - km) / (DIST_FALLOFF_KM - DIST_FULL_KM);
+    }
+
+    /** 时间得分系数：<=3 天满分，随后到 30 天线性衰减为 0 */
+    double timeFactor(long days) {
+        if (days <= TIME_FULL_DAYS) return 1;
+        if (days >= TIME_FALLOFF_DAYS) return 0;
+        return (double) (TIME_FALLOFF_DAYS - days) / (TIME_FALLOFF_DAYS - TIME_FULL_DAYS);
     }
 
     /** 2-gram 相似度（适合中文短文本） */
@@ -192,6 +242,54 @@ public class MatchService {
 
     private String titleDesc(String title, String desc) {
         return (title == null ? "" : title) + " " + (desc == null ? "" : desc);
+    }
+
+    // ------------------------------------------------------------------
+    // 存量回刷
+    // ------------------------------------------------------------------
+
+    /**
+     * ADMIN：对全部 WAITING 物品按当前算法重跑匹配。
+     * 幂等：命中唯一键的记录静默跳过，旧低分记录保留不删；回刷不发送消息，避免打扰用户。
+     */
+    public Map<String, Integer> rebuildAll() {
+        if (!UserContext.isAdmin()) {
+            throw new BusinessException(403, "仅平台管理员可执行匹配回刷");
+        }
+        List<Found> founds = foundMapper.selectList(new QueryWrapper<Found>()
+                .eq("status", Found.STATUS_WAITING)
+                .orderByDesc("create_time"));
+        List<Lost> losts = lostMapper.selectList(new QueryWrapper<Lost>()
+                .eq("status", Lost.STATUS_WAITING)
+                .orderByDesc("create_time"));
+        Map<String, List<Lost>> byCategory = losts.stream()
+                .filter(l -> l.getCategory() != null)
+                .collect(Collectors.groupingBy(Lost::getCategory));
+
+        int considered = 0;
+        int created = 0;
+        int skipped = 0;
+        for (Found found : founds) {
+            for (Lost lost : byCategory.getOrDefault(found.getCategory(), List.of())) {
+                MatchScore s = score(found, lost);
+                if (s.total() < THRESHOLD) continue;
+                considered++;
+                if (saveMatch(found, lost, s, false)) {
+                    created++;
+                } else {
+                    skipped++;
+                }
+            }
+        }
+        Map<String, Integer> result = new LinkedHashMap<>();
+        result.put("waitingFound", founds.size());
+        result.put("waitingLost", losts.size());
+        result.put("considered", considered);
+        result.put("created", created);
+        result.put("skippedExisting", skipped);
+        log.info("匹配回刷完成：WAITING 拾物 {} 条、失物 {} 条，入围 {}，新建 {}，已存在 {}",
+                founds.size(), losts.size(), considered, created, skipped);
+        return result;
     }
 
     // ------------------------------------------------------------------

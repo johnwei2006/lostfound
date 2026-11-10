@@ -27,6 +27,10 @@
         <text>🔗 智能匹配推荐</text>
         <text class="arrow">›</text>
       </view>
+      <view class="menu-item" @tap="goTransfer">
+        <text>🚚 我的转交</text>
+        <text class="arrow">›</text>
+      </view>
       <view class="menu-item" @tap="goSites">
         <text>🏠 招领站</text>
         <text class="arrow">›</text>
@@ -69,6 +73,7 @@ const logout = () => {
 const goLogin = () => uni.navigateTo({ url: '/pages/login/login' })
 const goList = (mode) => uni.navigateTo({ url: `/pages/list/list?mode=${mode}` })
 const goMatch = () => uni.navigateTo({ url: '/pages/list/list?mode=match' })
+const goTransfer = () => uni.navigateTo({ url: '/pages/transfer/transfer' })
 const goSites = () => uni.navigateTo({ url: '/pages/sites/sites' })
 </script>
 

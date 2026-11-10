@@ -330,3 +330,17 @@ nginx -t && systemctl reload nginx
 - **权限与状态口径**：申请状态 `PENDING / APPROVED / REJECTED`；背书文案由站点自行维护，不代表平台认证。角色与页面矩阵见主 README「招领站管理」。
 - **凭据与清理**：本次部署口令由临时运维目录中的既有凭据注入进程环境变量，未进入命令行、未写入仓库、未回显；运维脚本位于 `C:/Users/John/AppData/Local/Temp/dbtool/`，不入库；仓库内未新增明文凭据。
 - **仍待人工处理**：微信开发者工具服务端口与小程序版本审核；默认管理员口令轮换；`deploy/remote-deploy.js` 勘察段中历史遗留的示例数据库口令建议改为从环境变量读取。临时运维目录 `dbtool/verify-web-online.js` 内保存有历史明文连接口令，本轮部署复用了该凭据，建议清理脚本中的明文并轮换口令。
+
+## 小程序转交与匹配优化上线记录（2026-11-10）
+
+**范围**：小程序 1.5.0（转交功能入口 + 我的转交页 + 转交消息分类）、后端（匹配算法重配 + 匹配回刷接口 + 转交 DTO 校验修复）；无数据库变更。
+
+- **匹配算法重配（`MatchService`）**：候选仍按类别完全相同硬过滤；权重改为 类别 30（同类别固定满分底座）+ 时间接近度 25（相差 ≤3 天满分，3~30 天线性衰减）+ 空间距离 25（≤2km 满分，2~50km 线性衰减）+ 关键词 20（bigram），阈值 50→45；缺失时间/坐标不加分（避免纯类别匹配自动入围）；`reason` 文案改为体现具体天数与公里数。新增 `MatchServiceTest` 12 项单测。
+- **匹配回刷**：新增 `POST /api/match/rebuild`（仅 ADMIN），对全部 WAITING 物品重跑匹配；幂等（命中 `uk_found_lost` 跳过）、旧低分记录保留不删、静默不发送消息。线上执行：`waitingFound=176`、`waitingLost=235`、首轮 `created=4345`，二次执行 `created=0`、`skippedExisting=4360`（含首轮新增 + 历史低分记录），幂等验证通过。
+- **转交修复**：`TransferDTO.foundId` 原标注 `@NotNull`，与 `POST /api/found/{id}/transfer`（物品 ID 走路径）矛盾，body 不带 `foundId` 会被 `@Valid` 直接 400（线上回归发现）。已移除该 `@NotNull` 并在 `TransferService.apply` 开头对 `foundId` / `siteId` 做兜底校验（400）；新增 `TransferServiceTest` 6 项单测。
+- **小程序 1.5.0**：两套 uni-app 源码逐文件比对 `diff=[]`；`npm run build:mp-weixin` 通过，`dist/build/mp-weixin` 强同步 `dist/dev/mp-weixin` 并保留 IDE 私配。新增 `transferApi`、「我的发布」拾物转交操作行与弹层、`pages/transfer/transfer` 我的转交页（状态时间线 + 撤回）、消息中心 `TRANSFER` 分类与跳转、`pages.json` 注册。
+- **本地验证**：`mvn -q test` 全量通过（新增 `MatchServiceTest` 12 项 + `TransferServiceTest` 6 项），`mvn -q -DskipTests package` 通过。
+- **部署**：`node deploy/remote-deploy.js backend` 分阶段执行（未用 `all`），重启后 `health=200`、`systemctl is-active lostfound=active`。首次部署后只读回归发现 `POST /api/match/rebuild` 未登录返回 `code=500`——定位为旧 jar 未重启成功（`GlobalExceptionHandler` 兜底 NoHandlerFound），重新部署后 `code=401` 正常；随后再次部署含转交 DTO 修复。
+- **线上回归**：`verify-match-transfer-online.js` 只读 **8/8**、最小写入 **22/22**。写入回归：注册临时用户 → 发布同类别/时间差 1 天/相距约 0.6km 的失物拾物 → 发布即生成匹配（score=93.71，reason 含「时间相差 1 天」「地点相距约 0.6 公里」）→ ADMIN 回刷幂等 → 转交发起（body 不带 foundId，transferId 返回正常）→ 重复待审 400 → 时间线完整 → 按物品撤回 CANCELLED → 重新发起 → 非管理员审批 403 → ADMIN 审批通过 → 拾物 `APPROVED/TRANSFER` → 删除临时物品并由 SSH 隧道清理 `match_record`、`found_transfer`、`message` 与临时用户，清理后 `found=189`、`lost=244`、`found_transfer=0`。
+- **小程序 1.5.0 上传状态**：`cli.bat upload ... -v 1.5.0` 因 `IDE service port disabled` 失败；需人工开启微信开发者工具 → 设置 → 安全设置 → 服务端口后重传，并到公众平台提交审核。
+- **凭据与清理**：部署口令以字符码方式注入进程环境变量（不进命令行、不写文件、不回显），会话结束即失效；临时运维脚本位于 `C:/Users/John/AppData/Local/Temp/dbtool/`（`sync-mp-dev.js`、`verify-mp-sources.js`、`verify-match-transfer-online.js` 可复用），`.deploy-secret` 与凭据包装脚本已删除，仓库内无新增明文凭据。
