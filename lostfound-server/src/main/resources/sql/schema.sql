@@ -121,6 +121,10 @@ CREATE TABLE IF NOT EXISTS `foundsite` (
     `phone`       VARCHAR(20)   DEFAULT NULL COMMENT '联系电话',
     `open_time`   VARCHAR(100)  DEFAULT NULL COMMENT '开放时间',
     `description` VARCHAR(1000) DEFAULT NULL COMMENT '站点简介',
+    `endorsement_org`        VARCHAR(100) DEFAULT NULL COMMENT '自定义背书单位',
+    `endorsement_text`       VARCHAR(500) DEFAULT NULL COMMENT '自定义背书推荐语',
+    `endorsement_updated_at` DATETIME     DEFAULT NULL COMMENT '背书更新时间',
+    `endorsement_updated_by` BIGINT       DEFAULT NULL COMMENT '背书更新人ID',
     `deleted`     TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',
     `create_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -139,6 +143,35 @@ CREATE TABLE IF NOT EXISTS `foundsite_manager` (
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_site_user` (`site_id`, `user_id`)
 ) ENGINE = InnoDB COMMENT ='招领站管理员表';
+
+-- ---------------------------------------------------------------------
+-- 招领站建站申请表（注册用户申请 -> 平台 ADMIN 审核 -> 自动建站并绑定管理员）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `foundsite_application` (
+    `id`                BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `applicant_user_id` BIGINT        NOT NULL COMMENT '申请用户ID',
+    `name`              VARCHAR(100)  NOT NULL COMMENT '拟建站点名称',
+    `address`           VARCHAR(200)  NOT NULL COMMENT '拟建站点地址',
+    `longitude`         DECIMAL(10,6) DEFAULT NULL COMMENT '经度',
+    `latitude`          DECIMAL(10,6) DEFAULT NULL COMMENT '纬度',
+    `phone`             VARCHAR(20)   DEFAULT NULL COMMENT '联系电话',
+    `open_time`         VARCHAR(100)  DEFAULT NULL COMMENT '开放时间',
+    `description`       VARCHAR(1000) DEFAULT NULL COMMENT '站点简介',
+    `reason`            VARCHAR(500)  NOT NULL COMMENT '申请理由',
+    `contact`           VARCHAR(100)  DEFAULT NULL COMMENT '补充联系方式',
+    `status`            VARCHAR(20)   NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/APPROVED/REJECTED',
+    `reviewer_user_id`  BIGINT        DEFAULT NULL COMMENT '审核人ID',
+    `review_time`       DATETIME      DEFAULT NULL COMMENT '审核时间',
+    `review_remark`     VARCHAR(500)  DEFAULT NULL COMMENT '审核意见',
+    `created_site_id`   BIGINT        DEFAULT NULL COMMENT '审核通过后创建的站点ID',
+    `create_time`       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '申请时间',
+    `update_time`       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_status_create_time` (`status`, `create_time`),
+    KEY `idx_applicant_status` (`applicant_user_id`, `status`),
+    KEY `idx_applicant_create_time` (`applicant_user_id`, `create_time`),
+    KEY `idx_created_site_id` (`created_site_id`)
+) ENGINE = InnoDB COMMENT ='招领站建站申请表';
 
 -- ---------------------------------------------------------------------
 -- 拾物转交招领站申请表（申请 -> 站点管理员审批 -> 入库）
@@ -286,7 +319,7 @@ CREATE TABLE IF NOT EXISTS `message` (
     `user_id`     BIGINT        NOT NULL COMMENT '接收用户ID',
     `title`       VARCHAR(100)  NOT NULL COMMENT '消息标题',
     `content`     VARCHAR(1000) DEFAULT NULL COMMENT '消息内容',
-    `type`        VARCHAR(20)   NOT NULL DEFAULT 'SYSTEM' COMMENT '类型：MATCH-匹配推荐 / CLAIM-认领动态 / SYSTEM-系统通知',
+    `type`        VARCHAR(20)   NOT NULL DEFAULT 'SYSTEM' COMMENT 'MATCH/CLAIM/SYSTEM/TRANSFER/RETURN/SITE',
     `related_id`  BIGINT        DEFAULT NULL COMMENT '关联ID（匹配记录/申请/物品）',
     `is_read`     TINYINT       NOT NULL DEFAULT 0 COMMENT '是否已读：0-未读 / 1-已读',
     `deleted`     TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',

@@ -39,7 +39,7 @@ const loadUsers = async () => {
 
 const openCreate = () => {
   editing.value = null
-  form.value = { name: '', address: '', phone: '', openTime: '', description: '' }
+  form.value = { name: '', address: '', phone: '', openTime: '', description: '', endorsementOrg: '', endorsementText: '' }
   managerIds.value = []
   loadUsers()
   dialog.value = true
@@ -88,7 +88,7 @@ const remove = async (s: SiteVO) => {
     <div class="sites-head">
       <div>
         <h2>招领站管理</h2>
-        <p>建立站点并配置多名管理员，管理员可在「招领站管理」后台处理本站物品与归还。</p>
+        <p>可直接建站，也可在「建站申请审核」中通过用户申请自动建站并绑定申请人为管理员；背书文案由平台或站点管理员维护。</p>
       </div>
       <el-button type="primary" round :icon="Plus" @click="openCreate">新建站点</el-button>
     </div>
@@ -110,6 +110,13 @@ const remove = async (s: SiteVO) => {
         </el-table-column>
         <el-table-column label="物品数" width="90">
           <template #default="{ row }"><span class="lf-tag lf-tag--muted">{{ row.itemCount }}</span></template>
+        </el-table-column>
+        <el-table-column label="背书状态" width="150">
+          <template #default="{ row }">
+            <span class="lf-tag" :class="row.hasEndorsement ? 'lf-tag--waiting' : 'lf-tag--muted'">
+              {{ row.hasEndorsement ? (row.endorsementOrg || '已设置背书') : '未设置' }}
+            </span>
+          </template>
         </el-table-column>
         <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
@@ -134,6 +141,8 @@ const remove = async (s: SiteVO) => {
         <el-form-item label="电话"><el-input v-model="form.phone" /></el-form-item>
         <el-form-item label="开放时间"><el-input v-model="form.openTime" placeholder="如：8:00-22:00" /></el-form-item>
         <el-form-item label="简介"><el-input v-model="form.description" type="textarea" :rows="3" /></el-form-item>
+        <el-form-item label="背书单位"><el-input v-model="form.endorsementOrg" maxlength="100" show-word-limit placeholder="选填，如：社区服务中心" /></el-form-item>
+        <el-form-item label="背书推荐语"><el-input v-model="form.endorsementText" type="textarea" :rows="2" maxlength="500" show-word-limit placeholder="选填，说明背书单位与站点的关系或推荐理由" /></el-form-item>
         <el-form-item label="站点管理员">
           <el-select v-model="managerIds" multiple filterable collapse-tags collapse-tags-tooltip :max-collapse-tags="3"
             placeholder="搜索并添加用户，可多选" style="width: 100%">

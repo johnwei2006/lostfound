@@ -14,6 +14,7 @@ const menus = [
   { path: '/manage/items', label: '站点物品', icon: Goods },
   { path: '/manage/transfers', label: '转交与认领审批', icon: Tickets },
   { path: '/manage/returns', label: '归还管理', icon: CircleCheck },
+  { path: '/manage/site', label: '站点资料与背书', icon: OfficeBuilding },
 ]
 
 const noSite = computed(() => !siteStore.loading && !siteStore.error && siteStore.sites.length === 0)
@@ -83,7 +84,8 @@ onMounted(() => siteStore.load())
       </div>
       <div v-else-if="noSite" class="state-panel lf-card">
         <el-empty description="你还没有被指派为任何招领站的管理员" :image="'/empty.svg'">
-          <p class="state-detail">请联系平台管理员在「管理后台 → 招领站管理」中将你添加为站点管理员。</p>
+          <p class="state-detail">可提交建站申请，平台审核通过后自动创建站点并开通管理权限；也可联系平台管理员加入已有站点。</p>
+          <el-button type="primary" round @click="router.push('/site/apply')">申请创建招领站</el-button>
           <el-button round :icon="OfficeBuilding" @click="router.push('/sites')">浏览招领站</el-button>
         </el-empty>
       </div>

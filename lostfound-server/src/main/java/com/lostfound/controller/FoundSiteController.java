@@ -8,6 +8,7 @@ import com.lostfound.common.Result;
 import com.lostfound.dto.PublishItemDTO;
 import com.lostfound.dto.ReturnDTO;
 import com.lostfound.dto.SiteDTO;
+import com.lostfound.dto.SiteEndorsementDTO;
 import com.lostfound.entity.FoundSite;
 import com.lostfound.service.ClaimService;
 import com.lostfound.service.FoundSiteService;
@@ -109,6 +110,15 @@ public class FoundSiteController {
     @PutMapping("/{id}/managers")
     public Result<Void> setManagers(@PathVariable Long id, @RequestBody List<Long> userIds) {
         foundSiteService.setManagers(id, userIds);
+        return Result.ok();
+    }
+
+    /** 自定义背书文案：全局 ADMIN 或对应站点管理员可维护 */
+    @RequireLogin
+    @PutMapping("/{id}/endorsement")
+    public Result<Void> updateEndorsement(@PathVariable Long id,
+                                          @Valid @RequestBody SiteEndorsementDTO dto) {
+        foundSiteService.updateEndorsement(id, dto);
         return Result.ok();
     }
 

@@ -15,4 +15,5 @@ public class SiteVO extends FoundSite {
 
     private Long managerCount = 0L;
     private Long itemCount = 0L;
+    private Boolean hasEndorsement = false;
 }

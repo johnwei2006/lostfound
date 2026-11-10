@@ -3,9 +3,9 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, User as UserIcon, View } from '@element-plus/icons-vue'
-import { itemApi, focusApi, claimApi, authApi, transferApi } from '@/api'
-import { TRANSFER_STATUS_MAP } from '@/types'
-import type { ClaimVO, ItemVO, TransferVO } from '@/types'
+import { itemApi, focusApi, claimApi, authApi, transferApi, siteApplicationApi } from '@/api'
+import { SITE_APPLICATION_STATUS_MAP, TRANSFER_STATUS_MAP } from '@/types'
+import type { ClaimVO, ItemVO, SiteApplication, TransferVO } from '@/types'
 import { useUserStore } from '@/stores/user'
 import { openQrLogin } from '@/composables/useQrLogin'
 import { errMsg, fmtTime } from '@/utils/format'
@@ -29,6 +29,17 @@ const transferError = ref('')
 
 const profileForm = ref({ nickname: '', phone: '', email: '', avatar: '' })
 const pwdForm = ref({ oldPassword: '', newPassword: '', confirm: '' })
+
+/** 个人中心只展示最近一条建站申请摘要，完整列表在 /site/applications */
+const latestApplication = ref<SiteApplication | null>(null)
+const loadLatestApplication = async () => {
+  if (!store.isLoggedIn) { latestApplication.value = null; return }
+  try {
+    const apps = await siteApplicationApi.mine()
+    latestApplication.value = apps[0] || null
+  } catch { latestApplication.value = null }
+}
+watch(() => store.isLoggedIn, loadLatestApplication, { immediate: true })
 
 const pendingTransfers = computed(() => transfers.value.filter((t) => t.status === 'PENDING').length)
 
@@ -157,6 +168,24 @@ const cancelTransfer = async (t: TransferVO) => {
       <el-button v-else-if="store.isSiteManager" round plain @click="router.push('/manage')">
         招领站管理
       </el-button>
+    </div>
+
+    <div v-if="store.isLoggedIn" class="lf-card apply-summary">
+      <div class="apply-summary__body">
+        <b>招领站共建</b>
+        <p v-if="latestApplication">
+          最近申请「{{ latestApplication.name }}」
+          <span class="lf-tag" :class="SITE_APPLICATION_STATUS_MAP[latestApplication.status]?.cls">
+            {{ latestApplication.statusLabel || SITE_APPLICATION_STATUS_MAP[latestApplication.status]?.text }}
+          </span>
+          · {{ fmtTime(latestApplication.createTime) }}
+        </p>
+        <p v-else>想为社区、园区或单位建立招领站？提交资料并通过平台审核后，系统会自动建站并开通你的站点管理权限。</p>
+      </div>
+      <div class="apply-summary__ops">
+        <el-button size="small" round @click="router.push('/site/applications')">我的建站申请</el-button>
+        <el-button size="small" type="primary" round @click="router.push('/site/apply')">申请创建招领站</el-button>
+      </div>
     </div>
 
     <div v-if="!store.isLoggedIn" class="guest-panel lf-card">
@@ -311,6 +340,13 @@ const cancelTransfer = async (t: TransferVO) => {
 .profile-head .el-button { margin-left: auto; }
 .profile-avatar--empty { background: #eef2f8; color: #94a3b8; }
 .profile-tabs { margin-top: 18px; }
+.apply-summary { display: flex; align-items: center; gap: 16px; margin-top: 18px; padding: 16px 22px; background: linear-gradient(110deg, #fff, #f2f7ff); }
+.apply-summary__body { flex: 1; min-width: 0; }
+.apply-summary__body b { font-size: 14px; font-weight: 600; }
+.apply-summary__body p { margin-top: 4px; font-size: 12.5px; line-height: 1.7; color: var(--lf-text-2); }
+.apply-summary__body .lf-tag { margin: 0 4px; }
+.apply-summary__ops { display: flex; gap: 8px; flex-shrink: 0; }
+@media (max-width: 620px) { .apply-summary { flex-direction: column; align-items: flex-start; } }
 .tab-badge { margin-left: 6px; }
 .guest-panel { display: flex; align-items: center; flex-direction: column; gap: 12px; margin-top: 18px; padding: 46px 24px 44px; text-align: center; background: linear-gradient(180deg, #fff 0%, #f8fbff 100%); }
 .guest-panel__icon { display: flex; align-items: center; justify-content: center; width: 62px; height: 62px; border-radius: 50%; background: var(--lf-primary-soft); color: var(--lf-primary); }

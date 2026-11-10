@@ -3,10 +3,11 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { OfficeBuilding, Location, Phone, Clock } from '@element-plus/icons-vue'
 import { siteApi } from '@/api'
-import type { FoundSite } from '@/types'
+import type { SiteVO } from '@/types'
+import SiteEndorsementCard from '@/components/SiteEndorsementCard.vue'
 
 const router = useRouter()
-const list = ref<FoundSite[]>([])
+const list = ref<SiteVO[]>([])
 const total = ref(0)
 const page = ref(1)
 const keyword = ref('')
@@ -32,18 +33,22 @@ onMounted(load)
         <h1 class="lf-page-title">招领站网络</h1>
         <p class="lf-page-sub">拾获物品可就近交至招领站托管，失主可前往认领</p>
       </div>
-      <el-input
-        v-model="keyword"
-        placeholder="搜索站点名称/地址"
-        style="width: 260px"
-        clearable
-        @keyup.enter="page = 1; load()"
-      />
+      <div class="head-ops">
+        <el-button round @click="router.push('/site/apply')">申请创建招领站</el-button>
+        <el-input
+          v-model="keyword"
+          placeholder="搜索站点名称/地址"
+          style="width: 260px"
+          clearable
+          @keyup.enter="page = 1; load()"
+        />
+      </div>
     </div>
 
     <div v-if="loading">加载中…</div>
     <div v-else-if="list.length" class="site-grid">
-      <div v-for="s in list" :key="s.id" class="site-card lf-card lf-card--hover" @click="router.push('/sites/' + s.id)">
+      <article v-for="s in list" :key="s.id" class="site-card lf-card lf-card--hover"
+        :class="{ 'site-card--endorsed': s.hasEndorsement }" @click="router.push('/sites/' + s.id)">
         <div class="site-top">
           <div class="site-icon"><el-icon :size="22"><OfficeBuilding /></el-icon></div>
           <div>
@@ -54,7 +59,11 @@ onMounted(load)
         <p class="site-row"><el-icon><Location /></el-icon>{{ s.address }}</p>
         <p v-if="s.phone" class="site-row"><el-icon><Phone /></el-icon>{{ s.phone }}</p>
         <p v-if="s.description" class="site-desc">{{ s.description }}</p>
-      </div>
+        <div class="site-foot">
+          <SiteEndorsementCard compact :org="s.endorsementOrg" :text="s.endorsementText" />
+          <span class="item-count">{{ s.itemCount }} 件在站物品</span>
+        </div>
+      </article>
     </div>
     <el-empty v-else description="暂无招领站" :image="'/empty.svg'" />
 
@@ -73,7 +82,9 @@ onMounted(load)
   justify-content: space-between;
   align-items: flex-end;
   margin-bottom: 24px;
+  gap: 16px;
 }
+.head-ops { display: flex; align-items: center; gap: 10px; }
 .site-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -82,6 +93,10 @@ onMounted(load)
 .site-card {
   padding: 22px;
   cursor: pointer;
+}
+.site-card--endorsed {
+  border-color: #d7e5fd;
+  background: linear-gradient(160deg, #fff 60%, #f4f8ff 100%);
 }
 .site-top {
   display: flex;
@@ -129,5 +144,19 @@ onMounted(load)
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.site-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+}
+.site-foot :deep(.endorse-compact) { max-width: 66%; }
+.item-count { font-size: 12px; color: var(--lf-text-3); white-space: nowrap; }
+@media (max-width: 520px) {
+  .page-head { flex-direction: column; align-items: flex-start; }
+  .head-ops { width: 100%; flex-wrap: wrap; }
+  .head-ops .el-input { width: 100% !important; }
 }
 </style>

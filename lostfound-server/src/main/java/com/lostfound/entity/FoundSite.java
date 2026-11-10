@@ -23,6 +23,10 @@ public class FoundSite {
     private String phone;
     private String openTime;
     private String description;
+    private String endorsementOrg;
+    private String endorsementText;
+    private LocalDateTime endorsementUpdatedAt;
+    private Long endorsementUpdatedBy;
     @TableLogic
     private Integer deleted;
     private LocalDateTime createTime;

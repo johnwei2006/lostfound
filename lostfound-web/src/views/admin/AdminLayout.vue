@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
-import { DataAnalysis, Files, OfficeBuilding, User, Back } from '@element-plus/icons-vue'
+import { DataAnalysis, Files, OfficeBuilding, User, Back, Tickets } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
@@ -10,6 +10,7 @@ const store = useUserStore()
 const menus = [
   { path: '/admin/dashboard', label: '数据统计', icon: DataAnalysis },
   { path: '/admin/items', label: '物品审核', icon: Files },
+  { path: '/admin/site-applications', label: '建站申请审核', icon: Tickets },
   { path: '/admin/sites', label: '招领站管理', icon: OfficeBuilding },
   { path: '/admin/users', label: '用户管理', icon: User },
 ]

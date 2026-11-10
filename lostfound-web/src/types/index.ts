@@ -144,6 +144,11 @@ export interface FoundSite {
   phone?: string
   openTime?: string
   description?: string
+  /** 自定义背书：背书单位、推荐语与更新时间，未设置时为空 */
+  endorsementOrg?: string
+  endorsementText?: string
+  endorsementUpdatedAt?: string
+  endorsementUpdatedBy?: number
   createTime: string
 }
 
@@ -151,6 +156,56 @@ export interface FoundSite {
 export interface SiteVO extends FoundSite {
   managerCount: number
   itemCount: number
+  hasEndorsement: boolean
+}
+
+/* ---------------- 建站申请与背书 ---------------- */
+
+export type SiteApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+
+export const SITE_APPLICATION_STATUS_MAP: Record<SiteApplicationStatus, { text: string; cls: string }> = {
+  PENDING: { text: '待审核', cls: 'lf-tag--waiting' },
+  APPROVED: { text: '已通过', cls: 'lf-tag--finished' },
+  REJECTED: { text: '已驳回', cls: 'lf-tag--danger' },
+}
+
+/** 注册用户提交的建站申请资料 */
+export interface SiteApplicationPayload {
+  name: string
+  address: string
+  longitude?: number
+  latitude?: number
+  phone?: string
+  openTime?: string
+  description?: string
+  reason: string
+  contact?: string
+}
+
+export interface SiteApplicationReviewPayload {
+  approve: boolean
+  remark?: string
+}
+
+/** 背书文案：允许清空，清空后前台不再展示背书状态 */
+export interface SiteEndorsementPayload {
+  endorsementOrg: string
+  endorsementText: string
+}
+
+/** 申请列表 / 详情（/mine 与 /page 共用） */
+export interface SiteApplication extends SiteApplicationPayload {
+  id: number
+  applicantUserId: number
+  applicantNickname?: string
+  status: SiteApplicationStatus
+  statusLabel?: string
+  reviewerUserId?: number
+  reviewTime?: string
+  reviewRemark?: string
+  createdSiteId?: number
+  createTime: string
+  updateTime?: string
 }
 
 export interface SiteManager {

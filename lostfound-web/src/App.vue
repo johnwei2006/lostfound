@@ -106,6 +106,8 @@ const onCommand = (cmd: string) => {
                 <el-dropdown-menu>
                   <el-dropdown-item command="/profile">个人中心</el-dropdown-item>
                   <el-dropdown-item command="/matches">匹配推荐</el-dropdown-item>
+                  <el-dropdown-item command="/site/apply" divided>申请创建招领站</el-dropdown-item>
+                  <el-dropdown-item command="/site/applications">我的建站申请</el-dropdown-item>
                   <el-dropdown-item v-if="store.isSiteManager" command="/manage" divided>招领站管理</el-dropdown-item>
                   <el-dropdown-item v-if="store.isAdmin" command="/admin" divided>管理后台</el-dropdown-item>
                   <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
@@ -116,6 +118,7 @@ const onCommand = (cmd: string) => {
           <template v-else>
             <el-button text class="login-btn" @click="openQrLogin()">微信扫码</el-button>
             <el-button text class="login-btn" @click="router.push('/login')">账号登录</el-button>
+            <el-button text class="login-btn" @click="router.push('/site/apply')">申请建站</el-button>
             <el-button type="primary" round @click="router.push('/login?tab=register')">注册</el-button>
           </template>
         </div>

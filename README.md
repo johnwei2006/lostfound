@@ -34,12 +34,45 @@
 
 全局 `ADMIN` 在 `/admin/sites` 建立、编辑、删除招领站，并以**全量覆盖**方式配置多个站点管理员（权限来源 `foundsite_manager`，不新增 `user.role` 角色）。站点管理员登录后从顶栏进入独立的 `/manage` 后台，只能管理所属站点；全局 `ADMIN` 自动拥有全部站点权限。
 
+### 申请审核建站（推荐路径）
+
+注册用户无需变更 `user.role`，从顶栏「申请创建招领站」进入 `/site/apply` 提交站点资料、申请理由与联系方式；平台 `ADMIN` 在 `/admin/site-applications` 审核。审核通过时在单事务内创建 `foundsite`、写入一条 `foundsite_manager`、回写 `created_site_id` 并发送 `SITE` 类型站内消息；驳回不创建任何站点。审核前不产生站点，申请人与平台均可追踪状态与审核意见。
+
+```
+注册/登录 → 提交申请(PENDING) → 平台审核 → APPROVED 自动建站并开通管理 / REJECTED 可修改重提
+```
+
+| 角色 | 权限 |
+|------|------|
+| 未登录 | 只读浏览；提交申请返回 401 |
+| 注册用户 | 提交申请（同时仅一条 `PENDING`）、查看进度、撤回待审、驳回后修改重提 |
+| 平台 `ADMIN` | 筛选/通过/驳回申请；也可在 `/admin/sites` 直接建站并全量配置管理员 |
+| 站点管理员 | 在 `/manage/site` 维护本站背书；权限仅来自 `foundsite_manager`，由 `/api/auth/me` 实时返回 |
+| 普通已登录用户 | 站点资料与背书只读，维护接口返回 403 |
+
+申请接口独立挂在 `/api/site-applications`（避免与 `/api/foundsite/{id}` 字面量路径冲突）：`POST /` 提交、`GET /mine` 我的申请、`GET /page` 与 `PUT /{id}/review` 仅 ADMIN、`DELETE /{id}` 撤回待审。状态常量 `PENDING / APPROVED / REJECTED`；重复待审、非待审重复审核、申请人账号停用或仍有其它待审申请均由服务端拒绝，状态条件更新保证审核幂等。
+
+### 自定义背书
+
+`foundsite` 的 `endorsement_org` / `endorsement_text` / `endorsement_updated_at` / `endorsement_updated_by` 保存站点自行维护的背书单位与推荐语，`hasEndorsement` 由文案非空派生，**不新增审核流，也不代表平台认证**。`PUT /api/foundsite/{id}/endorsement` 在 Service 层通过 `SitePermissionService.requireManager` 校验：全局 `ADMIN` 与对应站点管理员可写，其它用户返回 403。平台 `ADMIN` 在 `/admin/sites` 弹窗内维护，站点管理员在 `/manage/site` 维护并实时预览；`/sites` 卡片与 `/sites/{id}` 详情通过 `SiteEndorsementCard` 展示，Vue 文本插值避免 XSS。
+
 | 页面 | 能力 |
 |------|------|
 | `/manage/items` | 概览统计、关键词/类别/状态/来源筛选、站点代发布、上下架、源头信息抽屉、跳归还登记 |
 | `/manage/transfers` | 转交申请与认领申请审批，审批意见、状态时间线、源头信息 |
 | `/manage/returns` | 现场归还登记（领取人/凭证/备注）、待审认领队列、归还记录与凭证查看 |
 | `/profile?tab=transfers` | 个人「我的转交」：审批结果、意见、入库与归还进度时间线、撤回申请 |
+| `/manage/site` | 站点管理员维护本站背书文案、更新时间与前台预览 |
+
+前台与审核页面：
+
+| 页面 | 能力 |
+|------|------|
+| `/site/apply` | 四步流程条、资料完整度、站点资料与申请理由校验、提交结果态（需登录） |
+| `/site/applications` | 我的申请：状态徽标、审核意见、已建站点入口、撤回与驳回后带资料重提（需登录） |
+| `/admin/site-applications` | ADMIN 审核工作台：待审/通过/驳回统计、状态与关键词筛选、详情抽屉、通过/驳回意见 |
+| `/admin/sites` | 平台建站/编辑、管理员全量覆盖、背书状态列与背书文案维护 |
+| `/sites`、`/sites/:id` | 站点卡片背书徽标、详情背书卡片，有权限者可直接维护文案 |
 
 **转交状态机**：个人发布拾物时选择目标站点，或在个人中心对已有拾物发起转交，生成 `PENDING` 转交单；站点管理员通过后物品进入站点清单，驳回或撤回后不展示。
 
@@ -72,9 +105,11 @@ node site-mgmt-migrate.js rollback <14位后缀>   # 需要时撤销本次新增
 
 > 生产库已于 2026-11-09 完成迁移（`verify` 全部通过，快照 `site_mgmt_bak_20261109140607`），后端与 Web 同日部署上线；新装库执行 `schema.sql` 即可，无需再跑迁移脚本。上线细节见 `deploy/README.md`。
 
+建站申请与背书的迁移使用 `site-application-migrate.js`（`survey / dry-run / apply / verify / rollback / clean-orphans`）：先建 `foundsite` 全表快照与 `_meta` 元数据，再按 `information_schema` 结果幂等补 4 个背书列、创建 `foundsite_application`。人工等价 SQL 见 `lostfound-server/src/main/resources/sql/migration-site-application.sql`，不含 `CHECK`、生成列、函数索引或 JSON 新类型，兼容 MySQL 5.6。生产库已于 2026-11-10 完成迁移并 `verify` 通过，快照 `site_app_bak_20261110003635_foundsite` / `_meta`；回滚命令与上线回归结果见 `deploy/README.md`。
+
 ## 数据库
 
-- 建表脚本：`lostfound-server/src/main/resources/sql/schema.sql`（MySQL 8，14 张表，含旧系统缺失的 message/claim_request/foundsite_manager/match_record 等）
+- 建表脚本：`lostfound-server/src/main/resources/sql/schema.sql`（16 张表，线上 MySQL 5.6.51 兼容，含旧系统缺失的 message/claim_request/foundsite_manager/match_record 与新增的 foundsite_application 等）
 - 参考：旧 `lostfound.sql`（11 表）与 16 个 `.hbm.xml` 实体映射；演示数据已脱敏，未导入
 
 ### 物品类别字典（唯一事实来源）

@@ -15,6 +15,9 @@ const scanLogin = () => openQrLogin((route.query.redirect as string) || '')
 
 const tab = ref(route.query.tab === 'register' ? 'register' : 'login')
 const loading = ref(false)
+/** 注册后直接引导到建站申请页，缩短「注册 -> 申请 -> 审核」路径 */
+const applyAfterRegister = ref(false)
+const applySteps = ['注册账号', '提交建站申请', '平台审核', '自动建站并开通管理']
 
 const loginForm = ref({ username: '', password: '' })
 const registerForm = ref({ username: '', password: '', confirm: '', nickname: '', phone: '' })
@@ -43,7 +46,7 @@ const doRegister = async () => {
   try {
     await store.register({ username: f.username, password: f.password, nickname: f.nickname, phone: f.phone })
     ElMessage.success('注册成功，已自动登录')
-    router.push('/')
+    router.push(applyAfterRegister.value ? '/site/apply' : '/')
   } catch (e: any) {
     ElMessage.error(e.message)
   } finally {
@@ -107,6 +110,16 @@ const doRegister = async () => {
               <el-button type="primary" size="large" style="width: 100%" :loading="loading" @click="doRegister">
                 注 册
               </el-button>
+              <div class="apply-guide">
+                <label class="apply-guide__check">
+                  <input v-model="applyAfterRegister" type="checkbox" />
+                  <span>注册后申请创建招领站</span>
+                </label>
+                <ol class="apply-guide__steps">
+                  <li v-for="(s, i) in applySteps" :key="s"><b>{{ i + 1 }}</b>{{ s }}</li>
+                </ol>
+                <p class="apply-guide__hint">审核通过前不会创建站点，也不会改变账号角色；进度可在「我的建站申请」查看。</p>
+              </div>
             </el-form>
           </el-tab-pane>
         </el-tabs>
@@ -238,6 +251,65 @@ const doRegister = async () => {
 .qr-entry__hint {
   margin-top: 10px;
   font-size: 12px;
+  color: var(--lf-text-3);
+}
+.apply-guide {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid #d7e5fd;
+  border-radius: 12px;
+  background: linear-gradient(130deg, #f7faff, #eef4ff);
+}
+.apply-guide__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lf-primary);
+  cursor: pointer;
+}
+.apply-guide__check input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--lf-primary);
+  cursor: pointer;
+}
+.apply-guide__check:focus-within {
+  outline: 2px solid var(--lf-primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.apply-guide__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.apply-guide__steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--lf-text-2);
+}
+.apply-guide__steps b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--lf-primary-soft);
+  color: var(--lf-primary);
+  font-size: 10px;
+}
+.apply-guide__hint {
+  margin-top: 10px;
+  font-size: 11.5px;
+  line-height: 1.7;
   color: var(--lf-text-3);
 }
 @media (prefers-reduced-motion: reduce) {

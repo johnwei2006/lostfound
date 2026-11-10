@@ -3,11 +3,13 @@ package com.lostfound.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.lostfound.auth.UserContext;
 import com.lostfound.common.BusinessException;
 import com.lostfound.common.ItemCategory;
 import com.lostfound.common.PageResult;
 import com.lostfound.dto.PublishItemDTO;
 import com.lostfound.dto.SiteDTO;
+import com.lostfound.dto.SiteEndorsementDTO;
 import com.lostfound.entity.Found;
 import com.lostfound.entity.FoundSite;
 import com.lostfound.entity.FoundSiteManager;
@@ -70,6 +72,7 @@ public class FoundSiteService {
             BeanUtils.copyProperties(site, vo);
             vo.setManagerCount(managers.getOrDefault(site.getId(), 0L));
             vo.setItemCount(items.getOrDefault(site.getId(), 0L));
+            vo.setHasEndorsement(hasEndorsement(site));
             return vo;
         }).toList();
         PageResult<SiteVO> result = new PageResult<>();
@@ -242,6 +245,31 @@ public class FoundSiteService {
         site.setPhone(dto.getPhone());
         site.setOpenTime(dto.getOpenTime());
         site.setDescription(dto.getDescription());
+        String org = clean(dto.getEndorsementOrg());
+        String text = clean(dto.getEndorsementText());
+        if (!Objects.equals(site.getEndorsementOrg(), org)
+                || !Objects.equals(site.getEndorsementText(), text)) {
+            site.setEndorsementOrg(org);
+            site.setEndorsementText(text);
+            site.setEndorsementUpdatedAt(LocalDateTime.now());
+            site.setEndorsementUpdatedBy(UserContext.getUserId());
+        }
+    }
+
+    /** 自定义背书文案：全局 ADMIN 或对应站点管理员可维护，普通用户只读 */
+    public void updateEndorsement(Long siteId, SiteEndorsementDTO dto) {
+        sitePermission.requireManager(siteId);
+        FoundSite site = detail(siteId);
+        site.setEndorsementOrg(clean(dto.getEndorsementOrg()));
+        site.setEndorsementText(clean(dto.getEndorsementText()));
+        site.setEndorsementUpdatedAt(LocalDateTime.now());
+        site.setEndorsementUpdatedBy(UserContext.getUserId());
+        foundSiteMapper.updateById(site);
+        log.warn("招领站背书更新 siteId={} operatorId={}", siteId, UserContext.getUserId());
+    }
+
+    private boolean hasEndorsement(FoundSite site) {
+        return clean(site.getEndorsementOrg()) != null || clean(site.getEndorsementText()) != null;
     }
 
     private static String clean(String value) {

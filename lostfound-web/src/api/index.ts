@@ -13,6 +13,10 @@ import type {
   QrStatusVO,
   QrTicketVO,
   ReturnRecordVO,
+  SiteApplication,
+  SiteApplicationPayload,
+  SiteApplicationReviewPayload,
+  SiteEndorsementPayload,
   SiteManager,
   SiteStatsVO,
   SiteVO,
@@ -117,6 +121,9 @@ export const siteApi = {
   /** 全量覆盖式管理员名单 */
   setManagers: (id: number, userIds: number[]) =>
     request.put(`/api/foundsite/${id}/managers`, userIds),
+  /** 自定义背书文案：全局 ADMIN 或对应站点管理员可维护 */
+  updateEndorsement: (id: number, data: SiteEndorsementPayload) =>
+    request.put(`/api/foundsite/${id}/endorsement`, data),
   /** 站点管理员代发布 */
   publishItem: (id: number, data: Record<string, unknown>) =>
     request.post<never, number>(`/api/foundsite/${id}/items`, data),
@@ -128,6 +135,21 @@ export const siteApi = {
     request.get<never, PageResult<ReturnRecordVO>>(`/api/foundsite/${id}/returns`, { params }),
   registerReturn: (id: number, data: Record<string, unknown>) =>
     request.post<never, number>(`/api/foundsite/${id}/returns`, data),
+}
+
+/* ---------------- 建站申请 ---------------- */
+export const siteApplicationApi = {
+  /** 登录用户提交申请；同一用户同时只保留一条待审申请 */
+  submit: (data: SiteApplicationPayload) =>
+    request.post<never, number>('/api/site-applications', data),
+  mine: () => request.get<never, SiteApplication[]>('/api/site-applications/mine'),
+  /** ADMIN 分页查询，keyword 匹配站点名称/地址/理由/联系方式 */
+  page: (params: { status?: string; keyword?: string; page?: number; size?: number }) =>
+    request.get<never, PageResult<SiteApplication>>('/api/site-applications/page', { params }),
+  /** 通过后自动建站并绑定申请人为管理员；返回新站点 ID，驳回返回 null */
+  review: (id: number, data: SiteApplicationReviewPayload) =>
+    request.put<never, number | null>(`/api/site-applications/${id}/review`, data),
+  withdraw: (id: number) => request.delete(`/api/site-applications/${id}`),
 }
 
 /* ---------------- 个人转交 ---------------- */

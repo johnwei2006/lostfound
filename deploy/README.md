@@ -314,3 +314,19 @@ nginx -t && systemctl reload nginx
 - **调整后分布**：`found.found_time` 年份 2020=143 / 2021=22 / 2022=10 / 2023=1 / 2024=4 / 2025=1 / 2026=5；`lost.lost_time` 年份 2019=1 / 2020=30 / 2021=31 / 2022=62 / 2023=42 / 2024=4 / 2025=11 / 2026=61；两表最大值均为 cutoff。
 - **缓存与线上回归**：执行 `systemctl restart lostfound` 清空 `latestItems` 缓存，服务 `active`。`verify-item-date-online.js` **6/6 通过**：`found/lost` 分页、详情与 `/latest` 均 200，`itemTime` 无未来值。
 - **口径说明**：本次只顺延业务上的拾获/丢失日期；列表卡片展示与按发布时间排序仍使用未改动的 `create_time`。如需同步顺延发布时间，应另行评估并单独执行。临时运维脚本不入库，临时连接文件已清理。
+
+## 招领站建站申请与背书上线记录（2026-11-10）
+
+**范围**：Web 管理端与后端/数据库；小程序本轮无功能改造，仅构建、产物同步与上传尝试。
+
+- **数据库迁移（幂等，MySQL 5.6.51）**：`survey` 显示 `foundsite=20`、`foundsite_manager=3`、背书字段 0/4、申请表不存在；`dry-run` 预览 4 列 + 1 表。`apply` 先建快照 `site_app_bak_20261110003635_foundsite`（20 行）与 `site_app_bak_20261110003635_meta`，再补 `endorsement_org` / `endorsement_text` / `endorsement_updated_at` / `endorsement_updated_by` 并创建 `foundsite_application`（4 个索引）。`verify` 全部通过：快照与当前 `foundsite` 均 20 行、申请 0 行、已写入背书 0 行。
+- **回滚**（仅在申请为空、四个背书字段全 NULL、`foundsite` 行数与快照一致时可用；快照表保留供审计）：`node with-secret.js node site-application-migrate.js rollback 20261110003635`。
+- **本地验证**：`mvn -q test`（含 `SiteApplicationServiceTest` 6 项）与 `mvn -q -DskipTests package` 通过；Web `npm run build`（`vue-tsc -b` + 字典 `--check`）通过；小程序 `npm run build:mp-weixin` 通过，两套 uni-app 源码逐文件比对 `diff=[]`（另修复了 `pages/mine/mine.vue` 的历史空白漂移），`dist/build/mp-weixin` 已强同步到 `dist/dev/mp-weixin` 并保留 IDE 配置。
+- **部署顺序**：线上迁移 → `node deploy/remote-deploy.js backend` → `node deploy/remote-deploy.js web`，未使用 `all`。后端重启后 `health=200`、`systemctl is-active lostfound=active`；Web 部署后 `https_api=200`、`https_web=200`、`nginx=active`。重启同时清空 Caffeine `latestItems` / `siteStats` / `adminOverview` 缓存。
+- **线上只读回归**：`verify-site-application-online.js baseline` **27/27 通过**。`SiteVO.hasEndorsement` 已返回；新端点 `POST /api/site-applications`、`GET /mine`、`GET /page` 均已注册且未登录返回 `code=401`；背书接口未登录 401；`/site/apply`、`/site/applications`、`/admin/site-applications`、`/manage/site` SPA 回退 200；10 个新增页面 JS/CSS chunk 线上均可访问；`found=186`、`lost=242` 未回归。
+- **最小写入回归**：`verify-site-application-online.js full` **19/19 通过**。注册临时用户 → 提交申请 → 重复待审被拒 `code=400` → ADMIN 通过自动建站并绑定 `foundsite_manager` → `/api/auth/me` 返回 `siteManager=true` 与新站点范围 → 非本站背书维护 403 → ADMIN 维护背书后详情与列表均返回文案/更新时间且 `hasEndorsement=true` → 第二条申请驳回且不新增站点、意见可追踪 → 重复审核被拒（幂等）→ ADMIN 删除临时站点并由 SSH 隧道清理申请、消息、管理员关系与临时用户。清理后 `foundsite=20`、`foundsite_manager=3`、`foundsite_application=0`，旧站点数据未变。
+- **序列化口径**：全局 Jackson `default-property-inclusion=non_null`，背书文案与更新时间在设置前不出现在 JSON，前端按可选字段处理；设置后正常返回，与「暂未设置背书」展示一致。
+- **小程序 1.4.1 上传状态**：`cli.bat upload --project <dist/build/mp-weixin> -v 1.4.1 -d "建站申请与背书配套构建（小程序无功能改动）"` 因 `IDE service port disabled` 失败；未伪造 `.ide-status` 或 `.ide` 端口文件。本轮小程序源码与线上 1.4.0 功能一致，无强制发布要求；如需重新上传，人工打开微信开发者工具 → 设置 → 安全设置 → 开启服务端口，再执行上传命令，最后到微信公众平台 → 版本管理提交审核。
+- **权限与状态口径**：申请状态 `PENDING / APPROVED / REJECTED`；背书文案由站点自行维护，不代表平台认证。角色与页面矩阵见主 README「招领站管理」。
+- **凭据与清理**：本次部署口令由临时运维目录中的既有凭据注入进程环境变量，未进入命令行、未写入仓库、未回显；运维脚本位于 `C:/Users/John/AppData/Local/Temp/dbtool/`，不入库；仓库内未新增明文凭据。
+- **仍待人工处理**：微信开发者工具服务端口与小程序版本审核；默认管理员口令轮换；`deploy/remote-deploy.js` 勘察段中历史遗留的示例数据库口令建议改为从环境变量读取。临时运维目录 `dbtool/verify-web-online.js` 内保存有历史明文连接口令，本轮部署复用了该凭据，建议清理脚本中的明文并轮换口令。
