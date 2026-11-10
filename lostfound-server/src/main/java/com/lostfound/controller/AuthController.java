@@ -84,7 +84,7 @@ public class AuthController {
 
     @RequireLogin
     @PutMapping("/profile")
-    public Result<Void> updateProfile(@RequestBody UpdateProfileDTO dto) {
+    public Result<Void> updateProfile(@Valid @RequestBody UpdateProfileDTO dto) {
         authService.updateProfile(UserContext.getUserId(), dto);
         return Result.ok();
     }

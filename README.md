@@ -17,6 +17,7 @@
 - 账号注册/登录（JWT，默认管理员 `admin / admin123`），以及微信小程序 openid 静默登录：进入小程序即自动建号/登录，令牌失效自动重登
 - **Web 先浏览、后登录**：游客可完整查看失物/拾物清单、详情、筛选、搜索、排序与距离；发布、关注、评论与认领会原地弹出登录引导，个人中心显示空态；本地登录态过期只静默清除，不打断浏览
 - **微信扫码登录（与小程序同一身份）**：Web 展示小程序码，微信扫码后在小程序「确认登录网页」页点一次确认；后端把票据绑定到当前小程序 `openid` 对应的 `user.id` 并签发同一套 JWT，两端共享发布、关注、消息与认领记录。票据仅存服务内存（默认 5 分钟、一次性消费），不落库
+- **个人资料与发布自动带入（小程序 1.6.0）**：「我的」页底部弹层编辑昵称与通用联系方式 `user.contact`（可填微信号/手机号/邮箱），保存走 `PUT /api/auth/profile` 并调 `GET /api/auth/me` 刷新本地 `lf_user`；发布页进入时自动填今日日期、资料联系方式，以及启动定位缓存的经纬度与「当前位置」地址文本（定位不可用时不写入，避免虚假位置），均保留手动修改与「选点」。微信登录仍为 `openid` 静默登录——微信官方不向小程序开放真实微信号，微信号由用户填写在联系方式中
 - 小程序启动自动定位（`getLocation`），地图以当前位置为中心；拒绝授权时回退默认城市并自动切为时间排序
 - Web 列表（`/lost`、`/found`）默认按距离近→远排序，可切换「最新发布 / 最多浏览」；浏览器定位（WGS84→GCJ02）在 HTTPS 或 localhost 下可用，拒绝授权时回退默认城市并自动切为时间排序，卡片显示距离
 - 首页失物/拾物列表默认按距离近→远排序，可切换为按发布时间近→远，卡片显示距离
@@ -106,6 +107,8 @@ node site-mgmt-migrate.js rollback <14位后缀>   # 需要时撤销本次新增
 > 生产库已于 2026-11-09 完成迁移（`verify` 全部通过，快照 `site_mgmt_bak_20261109140607`），后端与 Web 同日部署上线；新装库执行 `schema.sql` 即可，无需再跑迁移脚本。上线细节见 `deploy/README.md`。
 
 建站申请与背书的迁移使用 `site-application-migrate.js`（`survey / dry-run / apply / verify / rollback / clean-orphans`）：先建 `foundsite` 全表快照与 `_meta` 元数据，再按 `information_schema` 结果幂等补 4 个背书列、创建 `foundsite_application`。人工等价 SQL 见 `lostfound-server/src/main/resources/sql/migration-site-application.sql`，不含 `CHECK`、生成列、函数索引或 JSON 新类型，兼容 MySQL 5.6。生产库已于 2026-11-10 完成迁移并 `verify` 通过，快照 `site_app_bak_20261110003635_foundsite` / `_meta`；回滚命令与上线回归结果见 `deploy/README.md`。
+
+个人资料联系方式使用 `profile-contact-migrate.js`（`survey / dry-run / apply / verify`）：按 `information_schema` 幂等为 `user` 增加 `contact VARCHAR(100)`（历史行默认 NULL，不回填），人工等价 SQL 见 `lostfound-server/src/main/resources/sql/migration-profile-contact.sql`。**必须先加列再部署后端**（新实体查询会带上该列）。生产库已于 2026-11-10 迁移并 `verify` 通过（1687 行未变），上线细节见 `deploy/README.md`。
 
 ## 数据库
 

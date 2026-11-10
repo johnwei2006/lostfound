@@ -124,6 +124,7 @@ public class AuthService {
         if (dto.getAvatar() != null) user.setAvatar(dto.getAvatar());
         if (dto.getPhone() != null) user.setPhone(dto.getPhone());
         if (dto.getEmail() != null) user.setEmail(dto.getEmail());
+        if (dto.getContact() != null) user.setContact(dto.getContact());
         user.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(user);
     }

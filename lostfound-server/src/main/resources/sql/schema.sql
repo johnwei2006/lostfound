@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS `user` (
     `avatar`      VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
     `phone`       VARCHAR(20)  DEFAULT NULL COMMENT '手机号',
     `email`       VARCHAR(100) DEFAULT NULL COMMENT '邮箱',
+    `contact`     VARCHAR(100) DEFAULT NULL COMMENT '联系方式（微信号/手机号/邮箱等，发布时自动带入）',
     `openid`      VARCHAR(64)  DEFAULT NULL COMMENT '微信小程序openid',
     `role`        VARCHAR(20)  NOT NULL DEFAULT 'USER' COMMENT '角色：USER-普通用户 / ADMIN-管理员',
     `status`      TINYINT      NOT NULL DEFAULT 1 COMMENT '状态：1-正常 / 0-禁用',
@@ -34,6 +35,8 @@ CREATE TABLE IF NOT EXISTS `user` (
 -- 已有库升级：为 user 表补充微信登录字段（新库可忽略）
 -- ALTER TABLE `user` ADD COLUMN `openid` VARCHAR(64) DEFAULT NULL COMMENT '微信小程序openid' AFTER `email`;
 -- ALTER TABLE `user` ADD UNIQUE KEY `uk_openid` (`openid`);
+-- 已有库升级：补充通用联系方式（幂等脚本见 migration-profile-contact.sql，新库可忽略）
+-- ALTER TABLE `user` ADD COLUMN `contact` VARCHAR(100) DEFAULT NULL COMMENT '联系方式（微信号/手机号/邮箱等，发布时自动带入）' AFTER `email`;
 
 -- ---------------------------------------------------------------------
 -- 拾物表（捡到物品发布的招领信息，对应旧表 found）

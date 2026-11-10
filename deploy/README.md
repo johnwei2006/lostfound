@@ -344,3 +344,17 @@ nginx -t && systemctl reload nginx
 - **线上回归**：`verify-match-transfer-online.js` 只读 **8/8**、最小写入 **22/22**。写入回归：注册临时用户 → 发布同类别/时间差 1 天/相距约 0.6km 的失物拾物 → 发布即生成匹配（score=93.71，reason 含「时间相差 1 天」「地点相距约 0.6 公里」）→ ADMIN 回刷幂等 → 转交发起（body 不带 foundId，transferId 返回正常）→ 重复待审 400 → 时间线完整 → 按物品撤回 CANCELLED → 重新发起 → 非管理员审批 403 → ADMIN 审批通过 → 拾物 `APPROVED/TRANSFER` → 删除临时物品并由 SSH 隧道清理 `match_record`、`found_transfer`、`message` 与临时用户，清理后 `found=189`、`lost=244`、`found_transfer=0`。
 - **小程序 1.5.0 上传状态**：`cli.bat upload ... -v 1.5.0` 因 `IDE service port disabled` 失败；需人工开启微信开发者工具 → 设置 → 安全设置 → 服务端口后重传，并到公众平台提交审核。
 - **凭据与清理**：部署口令以字符码方式注入进程环境变量（不进命令行、不写文件、不回显），会话结束即失效；临时运维脚本位于 `C:/Users/John/AppData/Local/Temp/dbtool/`（`sync-mp-dev.js`、`verify-mp-sources.js`、`verify-match-transfer-online.js` 可复用），`.deploy-secret` 与凭据包装脚本已删除，仓库内无新增明文凭据。
+
+## 个人资料编辑与发布自动带入上线记录（2026-11-10，小程序 1.6.0）
+
+**范围**：后端 `user.contact` 新列与资料接口校验、小程序「我的」资料编辑弹层、发布页自动带入；**先加列再部署后端**。
+
+- **数据库迁移（幂等，MySQL 5.6.51）**：`profile-contact-migrate.js survey` 显示 `contact` 列不存在、`user=1687` 行；`dry-run` 预览 ALTER；`apply` 执行 `ALTER TABLE user ADD COLUMN contact VARCHAR(100) DEFAULT NULL ... AFTER email`（历史行 NULL，不回填）；`verify` 通过（列存在、类型 `varchar(100)`、可空、行数未变）。人工等价 SQL 入库：`lostfound-server/src/main/resources/sql/migration-profile-contact.sql`。
+- **后端**：`User` / `UpdateProfileDTO` / `AuthService.updateProfile` 支持 `contact`；`PUT /api/auth/profile` 补 `@Valid` 与长度校验（昵称 50、头像 500、手机 20、邮箱/联系方式 100），传空串可清空联系方式、传 null 不覆盖；`GET /api/auth/me`（MeVO 继承 User）自动带上新字段。新增 `AuthServiceTest` 4 项单测。
+- **小程序 1.6.0**：两套 uni-app 源码逐文件比对 `diff=[]`；「我的」页用户卡片/菜单进入底部弹层编辑昵称与联系方式（可填微信号/手机号/邮箱），保存后 `authApi.me()` 刷新 `lf_user`；发布页进入时自动填今日日期、资料联系方式（`contact` 优先，回退 `phone`/`email`）与启动定位缓存经纬度，地址文本填「当前位置」（定位不可用不写入，避免虚假位置），保留「选点」与「重新获取当前位置」；用户手动改过的值不被自动值覆盖。
+- **微信登录口径不变**：微信官方不向小程序开放真实微信号（wxid），也不自动返回手机号；仍为 `openid` 静默登录，微信号由用户填写在联系方式中，发布时自动带入。
+- **本地验证**：`mvn -q test` 全量通过（新增 `AuthServiceTest` 4 项），`mvn -q -DskipTests package` 通过；`npm run build:mp-weixin` 通过（类别字典 `--check` 通过），`dist/build/mp-weixin` 强同步 `dist/dev/mp-weixin` 并保留 IDE 私配。
+- **部署顺序**：线上加列 `apply → verify` → `node deploy/remote-deploy.js backend`（未用 `all`），重启后 `health=200`、`systemctl is-active lostfound=active`。本轮 Web 无改动，未重新部署。
+- **线上回归**：`verify-profile-autofill-online.js` 只读 **8/8**、最小写入 **16/16**。写入回归：临时用户 → 保存昵称/联系方式 → `/api/auth/me` 回读 → 超长字段 400 且不污染资料 → 模拟发布页 payload（今日日期 + 当前位置 + 资料联系方式）发布临时失物 → 详情回读 `contact/itemTime/address/经纬度` → 清空联系方式回读空串且其它字段不覆盖 → ADMIN 删除临时物品并由 SSH 隧道清理 `match_record`、`message` 与临时用户。API 删除为逻辑删除，脚本额外**物理清理本次及历史同标记回归物品**，复跑后物理行数恢复（`found=189`、`lost=244`）。
+- **小程序 1.6.0 上传状态**：`cli.bat upload ... -v 1.6.0` 因 `IDE service port disabled` 失败；需人工开启微信开发者工具 → 设置 → 安全设置 → 服务端口后重传，并到公众平台提交审核。
+- **凭据与清理**：部署/迁移口令以字符码注入进程环境变量（不进命令行、不写文件、不回显），会话结束即失效；本轮未创建 `.deploy-secret` 文件，临时运维脚本位于 `C:/Users/John/AppData/Local/Temp/dbtool/`（`profile-contact-migrate.js`、`verify-profile-autofill-online.js` 可复用），仓库内无新增明文凭据。

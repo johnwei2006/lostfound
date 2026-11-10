@@ -57,16 +57,18 @@
           <view class="location-btn" @tap="chooseLocation">选点</view>
         </view>
         <view class="location-tip">
-          <text @tap="useCurrentLocation">选点打不开？用当前位置</text>
+          <text @tap="useCurrentLocation">重新获取当前位置</text>
           <text v-if="form.longitude != null && form.latitude != null" class="location-coords">
             · 已选 {{ form.longitude }}, {{ form.latitude }}
           </text>
         </view>
+        <text class="auto-tip">已自动带入当前位置，可点「选点」修改详细地址</text>
       </view>
 
       <view class="form-item">
         <text class="label">联系方式</text>
-        <input v-model="form.contact" class="input" placeholder="手机号 / 微信号" />
+        <input v-model="form.contact" class="input" placeholder="微信号 / 手机号 / 邮箱" />
+        <text class="auto-tip">已自动带入个人资料中的联系方式，可修改</text>
       </view>
     </view>
 
@@ -81,7 +83,7 @@ import { reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { itemApi, CATEGORIES } from '@/utils/api'
 import { uploadFile } from '@/utils/request'
-import { ensurePrivacyAuthorize } from '@/utils/location'
+import { ensurePrivacyAuthorize, ensureLocation, getCurrentLocation } from '@/utils/location'
 
 const type = ref('lost')
 const categories = CATEGORIES
@@ -99,11 +101,45 @@ const form = reactive({
   contact: '',
 })
 
+/** 上次自动带入的联系方式：用户手动改过后不再覆盖 */
+let lastAutoContact = ''
+
+const todayStr = () => {
+  const d = new Date()
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+/** 仅在用户未改动时自动填坐标；定位不可用（默认城市）不写入，避免虚假位置 */
+const fillLocation = (loc) => {
+  if (!loc || loc.available === false) return
+  if (form.address || form.longitude != null) return
+  form.longitude = loc.longitude
+  form.latitude = loc.latitude
+  form.address = loc.address || '当前位置'
+}
+
+/** 发布页自动带入：今日日期、个人资料联系方式、当前定位 */
+const fillDefaults = () => {
+  if (!form.date) form.date = todayStr()
+  const me = uni.getStorageSync('lf_user') || {}
+  const autoContact = me.contact || me.phone || me.email || ''
+  if (!form.contact || form.contact === lastAutoContact) {
+    form.contact = autoContact
+    lastAutoContact = autoContact
+  }
+  fillLocation(getCurrentLocation())
+}
+
 onShow(() => {
   if (!uni.getStorageSync('lf_token')) {
     uni.showToast({ title: '请先登录', icon: 'none' })
     setTimeout(() => uni.navigateTo({ url: '/pages/login/login' }), 600)
+    return
   }
+  fillDefaults()
+  // 启动定位可能尚未完成，异步成功后补齐坐标（复用同一次启动的定位 Promise）
+  ensureLocation().then(fillLocation).catch(() => {})
 })
 
 /** 任何失败都要给出真实原因，避免点击后毫无反应；主动取消不打扰用户 */
@@ -290,6 +326,12 @@ const submit = async () => {
   color: #2563eb;
 }
 .location-coords {
+  color: #9ca3af;
+}
+.auto-tip {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
   color: #9ca3af;
 }
 .grid {
