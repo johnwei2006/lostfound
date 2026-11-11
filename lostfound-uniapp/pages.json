@@ -2,7 +2,7 @@
   "pages": [
     { "path": "pages/home/home", "style": { "navigationBarTitleText": "百觅", "enablePullDownRefresh": true } },
     { "path": "pages/publish/publish", "style": { "navigationBarTitleText": "发布" } },
-    { "path": "pages/messages/messages", "style": { "navigationBarTitleText": "消息" } },
+    { "path": "pages/messages/messages", "style": { "navigationBarTitleText": "通知" } },
     { "path": "pages/mine/mine", "style": { "navigationBarTitleText": "我的" } },
     { "path": "pages/list/list", "style": { "navigationBarTitleText": "列表" } },
     { "path": "pages/detail/detail", "style": { "navigationBarTitleText": "详情" } },
@@ -26,7 +26,7 @@
     "list": [
       { "pagePath": "pages/home/home", "text": "首页", "iconPath": "static/tabbar/home.png", "selectedIconPath": "static/tabbar/home-active.png" },
       { "pagePath": "pages/publish/publish", "text": "发布", "iconPath": "static/tabbar/publish.png", "selectedIconPath": "static/tabbar/publish-active.png" },
-      { "pagePath": "pages/messages/messages", "text": "消息", "iconPath": "static/tabbar/messages.png", "selectedIconPath": "static/tabbar/messages-active.png" },
+      { "pagePath": "pages/messages/messages", "text": "通知", "iconPath": "static/tabbar/messages.png", "selectedIconPath": "static/tabbar/messages-active.png" },
       { "pagePath": "pages/mine/mine", "text": "我的", "iconPath": "static/tabbar/mine.png", "selectedIconPath": "static/tabbar/mine-active.png" }
     ]
   }

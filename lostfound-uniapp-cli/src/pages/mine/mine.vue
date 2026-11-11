@@ -37,7 +37,7 @@
         <text class="arrow">›</text>
       </view>
       <view class="menu-item" @tap="goSites">
-        <text>🏠 招领站</text>
+        <text>🏠 附近招领站</text>
         <text class="arrow">›</text>
       </view>
     </view>

@@ -43,7 +43,7 @@
         </view>
         <view class="info-row">
           <text class="k">浏览</text>
-          <text>{{ item.viewCount }} · ⭐{{ item.focusCount }} · 💬{{ item.commentCount }}</text>
+          <text>{{ item.viewCount }} · ⭐{{ item.focusCount }}</text>
         </view>
       </view>
     </view>
@@ -89,34 +89,10 @@
       <view v-if="!claims.length" class="lf-empty" style="padding: 30rpx 0">暂无申请</view>
     </view>
 
-    <!-- 评论区 -->
-    <view class="lf-card">
-      <text class="title" style="font-size: 30rpx">评论（{{ comments.length }}）</text>
-      <view v-for="c in comments" :key="c.id" class="comment">
-        <view class="avatar">{{ (c.nickname || 'U').charAt(0) }}</view>
-        <view style="flex: 1">
-          <view class="comment-head">
-            <text style="font-weight: 600; font-size: 25rpx">{{ c.nickname }}</text>
-            <text class="lf-muted">{{ (c.createTime || '').slice(5, 16) }}</text>
-          </view>
-          <text style="font-size: 27rpx">{{ c.content }}</text>
-          <view v-for="cc in c.children" :key="cc.id" class="comment-reply">
-            <text style="color: #2563eb; font-size: 24rpx">{{ cc.nickname }}：</text>
-            <text style="font-size: 26rpx">{{ cc.content }}</text>
-          </view>
-          <text class="reply-btn" @tap="replyTo = c">回复</text>
-        </view>
-      </view>
-      <view v-if="!comments.length" class="lf-empty" style="padding: 30rpx 0">还没有评论</view>
-    </view>
-
     <!-- 底部操作栏 -->
     <view class="bottom-bar">
       <view class="bar-item" @tap="toggleFocus">
         <text>{{ item.focused ? '⭐ 已关注' : '☆ 关注' }}</text>
-      </view>
-      <view class="bar-item" @tap="focusInput">
-        <text>💬 评论</text>
       </view>
       <button
         v-if="!isOwner && item.status === 'WAITING'"
@@ -143,31 +119,19 @@
       </view>
     </view>
 
-    <!-- 评论输入弹层 -->
-    <view class="mask" v-if="showComment" @tap="showComment = false">
-      <view class="modal" @tap.stop>
-        <text v-if="replyTo" class="lf-muted">回复 @{{ replyTo.nickname }}（点击空白取消）</text>
-        <textarea v-model="commentText" class="textarea" :maxlength="1000" placeholder="友善发言…" />
-        <button class="lf-btn" style="margin-top: 24rpx" @tap="sendComment">发送</button>
-      </view>
-    </view>
   </view>
 </template>
 
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { itemApi, commentApi, claimApi, focusApi, STATUS_MAP } from '@/utils/api'
+import { itemApi, claimApi, focusApi, STATUS_MAP } from '@/utils/api'
 
 const type = ref('found')
 const id = ref(0)
 const item = ref(null)
-const comments = ref([])
 const claims = ref([])
 const showClaim = ref(false)
-const showComment = ref(false)
-const replyTo = ref(null)
-const commentText = ref('')
 const claimForm = reactive({ description: '', contact: '' })
 
 const status = computed(() => (item.value ? STATUS_MAP[item.value.status] : {}))
@@ -179,7 +143,6 @@ const isOwner = computed(() => {
 const load = async () => {
   try {
     item.value = await itemApi.detail(type.value, id.value)
-    comments.value = await commentApi.list(type.value.toUpperCase(), id.value)
     if (isOwner.value) loadClaims()
   } catch (e) {
     uni.showToast({ title: e.message, icon: 'none' })
@@ -216,30 +179,6 @@ const toggleFocus = async () => {
     await focusApi.focus(t, id.value)
     item.value.focused = true
     item.value.focusCount++
-  }
-}
-
-const focusInput = () => {
-  if (!uni.getStorageSync('lf_token')) {
-    return uni.navigateTo({ url: '/pages/login/login' })
-  }
-  replyTo.value = null
-  showComment.value = true
-}
-
-const sendComment = async () => {
-  if (!commentText.value.trim()) return
-  try {
-    await commentApi.add(type.value.toUpperCase(), id.value, {
-      content: commentText.value,
-      parentId: replyTo.value?.id,
-    })
-    commentText.value = ''
-    showComment.value = false
-    comments.value = await commentApi.list(type.value.toUpperCase(), id.value)
-    item.value.commentCount = comments.value.reduce((n, c) => n + 1 + (c.children?.length || 0), 0)
-  } catch (e) {
-    uni.showToast({ title: e.message, icon: 'none' })
   }
 }
 
@@ -354,39 +293,6 @@ const review = async (claim, approve) => {
 .claim-ops .lf-btn {
   flex: 1;
   margin: 0;
-}
-.comment {
-  display: flex;
-  gap: 14rpx;
-  margin-top: 24rpx;
-}
-.avatar {
-  width: 60rpx;
-  height: 60rpx;
-  border-radius: 50%;
-  background: #eaf1fe;
-  color: #2563eb;
-  text-align: center;
-  line-height: 60rpx;
-  font-size: 26rpx;
-  flex-shrink: 0;
-}
-.comment-head {
-  display: flex;
-  gap: 12rpx;
-  align-items: baseline;
-}
-.comment-reply {
-  margin-top: 10rpx;
-  background: #f5f7fa;
-  border-radius: 10rpx;
-  padding: 10rpx 16rpx;
-}
-.reply-btn {
-  color: #2563eb;
-  font-size: 24rpx;
-  margin-top: 6rpx;
-  display: inline-block;
 }
 .bottom-bar {
   position: fixed;

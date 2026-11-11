@@ -4,7 +4,7 @@
       <view class="web-login__icon"><text class="web-login__icon-text">寻</text></view>
       <text class="web-login__title">确认登录网页版</text>
       <text class="web-login__desc">
-        确认后将使用当前微信账号登录「百觅」网页版，与小程序共用同一个账号，发布、关注与消息会自动同步。
+        确认后将使用当前微信账号登录「百觅」网页版，与小程序共用同一个账号，发布、关注与通知会自动同步。
       </text>
 
       <view v-if="status === 'error'" class="web-login__notice">{{ message }}</view>

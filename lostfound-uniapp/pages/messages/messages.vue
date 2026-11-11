@@ -30,7 +30,7 @@
         <text class="msg-title">{{ m.title }}</text>
         <text class="msg-content lf-muted">{{ m.content }}</text>
       </view>
-      <view v-if="!loading && list.length === 0" class="lf-empty">暂无消息</view>
+      <view v-if="!loading && list.length === 0" class="lf-empty">暂无通知</view>
     </view>
   </view>
 </template>
