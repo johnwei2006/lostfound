@@ -105,14 +105,24 @@ onPullDownRefresh(load)
 .tabs {
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  gap: 8rpx;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   margin-bottom: 20rpx;
+  padding-bottom: 2rpx;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 .tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
   background: #fff;
   border-radius: 999rpx;
-  padding: 12rpx 26rpx;
-  font-size: 25rpx;
+  padding: 10rpx 16rpx;
+  font-size: 24rpx;
+  line-height: 1.2;
   color: #6b7280;
   border: 2rpx solid #e5e9f0;
 }
@@ -122,9 +132,12 @@ onPullDownRefresh(load)
   border-color: #2563eb;
 }
 .read-all {
+  flex: 0 0 auto;
   margin-left: auto;
+  white-space: nowrap;
   color: #2563eb;
-  font-size: 25rpx;
+  font-size: 24rpx;
+  line-height: 1.2;
 }
 .msg {
   padding: 22rpx;

@@ -3,10 +3,12 @@
     <view class="loc-main">
       <view class="loc-dot"><view class="loc-dot__inner" /></view>
       <view class="loc-copy">
-        <text class="loc-label">当前位置</text>
+        <view class="loc-head">
+          <text class="loc-label">当前位置</text>
+          <text class="loc-source" :class="'loc-source--' + sourceKind">{{ sourceText }}</text>
+        </view>
         <text class="loc-value">{{ displayText }}</text>
       </view>
-      <text class="loc-source" :class="'loc-source--' + sourceKind">{{ sourceText }}</text>
     </view>
     <view class="loc-actions">
       <view class="loc-btn loc-btn--primary" :class="{ 'is-disabled': loading }" @tap="chooseLocation">
@@ -110,9 +112,13 @@ onUnmounted(() => {
 
 <style scoped>
 .loc-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10rpx;
   margin: 0 20rpx 16rpx;
-  padding: 16rpx 20rpx;
-  border-radius: 18rpx;
+  padding: 12rpx 14rpx;
+  border-radius: 16rpx;
   background: #eaf1fe;
   border: 2rpx solid #d7e5fd;
 }
@@ -127,11 +133,13 @@ onUnmounted(() => {
 .loc-main {
   display: flex;
   align-items: center;
-  gap: 14rpx;
+  gap: 10rpx;
+  flex: 1 1 240rpx;
+  min-width: 0;
 }
 .loc-dot {
-  width: 28rpx;
-  height: 28rpx;
+  width: 26rpx;
+  height: 26rpx;
   border-radius: 50%;
   border: 3rpx solid #2563eb;
   display: flex;
@@ -140,8 +148,8 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 .loc-dot__inner {
-  width: 10rpx;
-  height: 10rpx;
+  width: 9rpx;
+  height: 9rpx;
   border-radius: 50%;
   background: #2563eb;
 }
@@ -150,14 +158,21 @@ onUnmounted(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4rpx;
+  gap: 2rpx;
+}
+.loc-head {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
 }
 .loc-label {
-  font-size: 22rpx;
+  font-size: 20rpx;
+  line-height: 1.2;
   color: #6b7280;
 }
 .loc-value {
-  font-size: 26rpx;
+  font-size: 25rpx;
+  line-height: 1.35;
   color: #1f2937;
   font-weight: 600;
   overflow: hidden;
@@ -165,8 +180,9 @@ onUnmounted(() => {
   text-overflow: ellipsis;
 }
 .loc-source {
-  font-size: 21rpx;
-  padding: 4rpx 12rpx;
+  font-size: 19rpx;
+  line-height: 1.2;
+  padding: 2rpx 10rpx;
   border-radius: 999rpx;
   background: #fff;
   color: #2563eb;
@@ -177,14 +193,16 @@ onUnmounted(() => {
 }
 .loc-actions {
   display: flex;
-  gap: 12rpx;
-  margin-top: 14rpx;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 8rpx;
+  flex: 0 0 auto;
 }
 .loc-btn {
-  padding: 10rpx 22rpx;
+  padding: 10rpx 16rpx;
   border-radius: 999rpx;
-  font-size: 24rpx;
+  font-size: 22rpx;
+  line-height: 1.2;
+  white-space: nowrap;
   color: #475569;
   background: #fff;
   border: 2rpx solid #e5e9f0;

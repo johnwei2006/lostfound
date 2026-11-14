@@ -72,7 +72,7 @@
     </view>
 
     <view style="text-align: center; margin-top: 30rpx" class="lf-muted">
-      百觅 · SpringBoot + Vue3 重构版
+      百觅科技
     </view>
 
     <!-- 个人资料编辑弹层 -->
