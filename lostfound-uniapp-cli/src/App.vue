@@ -90,13 +90,31 @@ page {
 .lf-field__value { flex: 1; color: #1f2937; font-size: 27rpx; word-break: break-all; }
 .lf-input {
   width: 100%;
-  padding: 18rpx 20rpx;
+  padding: 0 20rpx;
   border: 2rpx solid #e2e8f0;
   border-radius: 14rpx;
   background: #f8fafc;
   font-size: 27rpx;
   color: #1f2937;
   box-sizing: border-box;
+}
+/* 微信原生 input 的输入文字与 placeholder 是两层独立绘制：
+   固定高度让文字居中，但不能给 input 设超大 line-height，
+   否则 placeholder 层会被挤出可视区显示不全 */
+input.lf-input {
+  height: 88rpx;
+  line-height: normal;
+}
+textarea.lf-input {
+  padding: 18rpx 20rpx;
+  line-height: 1.6;
+}
+/* placeholder 单独指定正常行高，避免继承异常 */
+.lf-ph,
+.input-placeholder,
+.textarea-placeholder {
+  line-height: normal;
+  color: #94a3b8;
 }
 .lf-primary-btn {
   background: linear-gradient(135deg, #3b82f6, #1d4ed8);

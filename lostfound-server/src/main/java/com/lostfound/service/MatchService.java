@@ -41,6 +41,9 @@ public class MatchService {
     private static final double SCORE_TIME = 25;
     private static final double THRESHOLD = 45;
     private static final int MAX_MATCHES = 10;
+    /** 回刷分页批量与候选集安全上界 */
+    private static final int REBUILD_BATCH = 300;
+    private static final int REBUILD_LOST_MAX = 10000;
 
     /** 时间接近度满分区间（天），之后线性衰减到 {@link #TIME_FALLOFF_DAYS} 归零 */
     private static final long TIME_FULL_DAYS = 3;
@@ -256,39 +259,54 @@ public class MatchService {
         if (!UserContext.isAdmin()) {
             throw new BusinessException(403, "仅平台管理员可执行匹配回刷");
         }
-        List<Found> founds = foundMapper.selectList(new QueryWrapper<Found>()
-                .eq("status", Found.STATUS_WAITING)
-                .orderByDesc("create_time"));
+        // 候选失物一次性载入并加上界，避免历史数据增长后无 limit 打爆内存
         List<Lost> losts = lostMapper.selectList(new QueryWrapper<Lost>()
                 .eq("status", Lost.STATUS_WAITING)
-                .orderByDesc("create_time"));
+                .orderByAsc("id")
+                .last("limit " + REBUILD_LOST_MAX));
         Map<String, List<Lost>> byCategory = losts.stream()
                 .filter(l -> l.getCategory() != null)
                 .collect(Collectors.groupingBy(Lost::getCategory));
 
+        int waitingFound = 0;
         int considered = 0;
         int created = 0;
         int skipped = 0;
-        for (Found found : founds) {
-            for (Lost lost : byCategory.getOrDefault(found.getCategory(), List.of())) {
-                MatchScore s = score(found, lost);
-                if (s.total() < THRESHOLD) continue;
-                considered++;
-                if (saveMatch(found, lost, s, false)) {
-                    created++;
-                } else {
-                    skipped++;
+        long lastId = 0L;
+        // 拾物按主键游标分页，每批 REBUILD_BATCH 条，配对结果与原先一次性全表完全一致
+        while (true) {
+            List<Found> founds = foundMapper.selectList(new QueryWrapper<Found>()
+                    .eq("status", Found.STATUS_WAITING)
+                    .gt("id", lastId)
+                    .orderByAsc("id")
+                    .last("limit " + REBUILD_BATCH));
+            if (founds.isEmpty()) break;
+            waitingFound += founds.size();
+            Long nextId = founds.get(founds.size() - 1).getId();
+            for (Found found : founds) {
+                for (Lost lost : byCategory.getOrDefault(found.getCategory(), List.of())) {
+                    MatchScore s = score(found, lost);
+                    if (s.total() < THRESHOLD) continue;
+                    considered++;
+                    if (saveMatch(found, lost, s, false)) {
+                        created++;
+                    } else {
+                        skipped++;
+                    }
                 }
             }
+            // id 为空（测试桩或脏数据）时无法推进游标，处理完当前批即退出，避免死循环
+            if (founds.size() < REBUILD_BATCH || nextId == null) break;
+            lastId = nextId;
         }
         Map<String, Integer> result = new LinkedHashMap<>();
-        result.put("waitingFound", founds.size());
+        result.put("waitingFound", waitingFound);
         result.put("waitingLost", losts.size());
         result.put("considered", considered);
         result.put("created", created);
         result.put("skippedExisting", skipped);
         log.info("匹配回刷完成：WAITING 拾物 {} 条、失物 {} 条，入围 {}，新建 {}，已存在 {}",
-                founds.size(), losts.size(), considered, created, skipped);
+                waitingFound, losts.size(), considered, created, skipped);
         return result;
     }
 
@@ -296,22 +314,19 @@ public class MatchService {
     // 查询
     // ------------------------------------------------------------------
 
-    /** 与我相关的匹配推荐 */
+    /** 与我相关的匹配推荐：存在性子查询替代把用户全部物品 id 拉到应用层再拼大 IN */
     public List<MatchVO> myMatches(Long userId) {
-        List<Long> myFoundIds = foundMapper.selectList(new QueryWrapper<Found>()
-                        .eq("user_id", userId).select("id"))
-                .stream().map(Found::getId).toList();
-        List<Long> myLostIds = lostMapper.selectList(new QueryWrapper<Lost>()
-                        .eq("user_id", userId).select("id"))
-                .stream().map(Lost::getId).toList();
-        if (myFoundIds.isEmpty() && myLostIds.isEmpty()) return List.of();
-
-        QueryWrapper<MatchRecord> qw = new QueryWrapper<>();
-        qw.and(w -> {
-            if (!myFoundIds.isEmpty()) w.or().in("found_id", myFoundIds);
-            if (!myLostIds.isEmpty()) w.or().in("lost_id", myLostIds);
-        }).orderByDesc("create_time").last("limit 50");
+        if (userId == null) return List.of();
+        String myFound = "SELECT 1 FROM `found` f WHERE f.`id` = `found_id` AND f.`user_id` = "
+                + userId.longValue() + " AND f.`deleted` = 0";
+        String myLost = "SELECT 1 FROM `lost` l WHERE l.`id` = `lost_id` AND l.`user_id` = "
+                + userId.longValue() + " AND l.`deleted` = 0";
+        QueryWrapper<MatchRecord> qw = new QueryWrapper<MatchRecord>()
+                .and(w -> w.exists(myFound).or().exists(myLost))
+                .orderByDesc("create_time")
+                .last("limit 50");
         List<MatchRecord> records = matchRecordMapper.selectList(qw);
+        if (records.isEmpty()) return List.of();
 
         Set<Long> foundIds = records.stream().map(MatchRecord::getFoundId).collect(Collectors.toSet());
         Set<Long> lostIds = records.stream().map(MatchRecord::getLostId).collect(Collectors.toSet());

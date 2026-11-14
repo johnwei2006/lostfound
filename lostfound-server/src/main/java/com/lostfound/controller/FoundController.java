@@ -15,6 +15,7 @@ import com.lostfound.vo.ClaimVO;
 import com.lostfound.vo.ItemVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -28,6 +29,10 @@ import java.util.List;
 public class FoundController {
 
     private static final String TYPE = "FOUND";
+
+    /** 与 MybatisPlusConfig.maxLimit 对齐，避免请求 300 条却只拿到 100 条 */
+    @Value("${lostfound.perf.map-max-limit:100}")
+    private int mapMaxLimit;
 
     private final ItemService itemService;
     private final ClaimService claimService;
@@ -133,8 +138,9 @@ public class FoundController {
     @GetMapping("/map")
     public Result<List<ItemVO>> mapItems(@RequestParam(defaultValue = "200") int limit) {
         ItemQuery q = new ItemQuery();
-        q.setSize(Math.min(limit, 500));
+        q.setSize(Math.min(limit, mapMaxLimit));
         q.setStatus("WAITING");
+        q.enableMapMode();
         return Result.ok(itemService.page(TYPE, q, UserContext.getUserId()).getRecords());
     }
 }

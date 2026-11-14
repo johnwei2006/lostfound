@@ -76,6 +76,16 @@ CREATE TABLE IF NOT EXISTS `found` (
     KEY `idx_site` (`site_id`),
     KEY `idx_site_transfer` (`site_id`, `transfer_status`),
     KEY `idx_create_time` (`create_time`),
+    -- 查询性能复合索引：deleted 为逻辑删除列（MyBatis-Plus 自动附加），作前导列避免 filesort
+    KEY `idx_perf_time` (`deleted`, `create_time`),
+    KEY `idx_perf_hot` (`deleted`, `view_count`),
+    KEY `idx_perf_review_time` (`deleted`, `review_status`, `create_time`),
+    KEY `idx_perf_status_review_time` (`status`, `review_status`, `create_time`),
+    KEY `idx_perf_city_time` (`deleted`, `city`, `create_time`),
+    KEY `idx_perf_category_time` (`deleted`, `category`, `create_time`),
+    KEY `idx_perf_user_time` (`deleted`, `user_id`, `create_time`),
+    KEY `idx_perf_site_time` (`deleted`, `site_id`, `create_time`),
+    KEY `idx_perf_geo` (`deleted`, `longitude`, `latitude`),
     FULLTEXT KEY `ft_title_desc` (`title`, `description`) WITH PARSER ngram
 ) ENGINE = InnoDB COMMENT ='拾物表';
 
@@ -109,6 +119,15 @@ CREATE TABLE IF NOT EXISTS `lost` (
     KEY `idx_city` (`city`),
     KEY `idx_user` (`user_id`),
     KEY `idx_create_time` (`create_time`),
+    -- 查询性能复合索引：与 found 表保持同构
+    KEY `idx_perf_time` (`deleted`, `create_time`),
+    KEY `idx_perf_hot` (`deleted`, `view_count`),
+    KEY `idx_perf_review_time` (`deleted`, `review_status`, `create_time`),
+    KEY `idx_perf_status_review_time` (`status`, `review_status`, `create_time`),
+    KEY `idx_perf_city_time` (`deleted`, `city`, `create_time`),
+    KEY `idx_perf_category_time` (`deleted`, `category`, `create_time`),
+    KEY `idx_perf_user_time` (`deleted`, `user_id`, `create_time`),
+    KEY `idx_perf_geo` (`deleted`, `longitude`, `latitude`),
     FULLTEXT KEY `ft_title_desc` (`title`, `description`) WITH PARSER ngram
 ) ENGINE = InnoDB COMMENT ='失物表';
 

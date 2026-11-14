@@ -68,6 +68,23 @@ lostfound:
     page: ${WX_SITE_INVITE_PAGE:pages/manage/invite-accept}
     # 小程序新页面发布后使用 release；体验版联调可设为 trial
     env-version: ${WX_SITE_INVITE_ENV_VERSION:release}
+  perf:
+    # 查询性能开关：涉及结果集语义的项默认全部关闭，线上 survey + 结果集一致性校验通过后再按需开启
+    # 全文粗召回（需先确认线上存在 ngram FULLTEXT 索引）；异常自动降级回原 LIKE
+    fulltext-enabled: ${PERF_FULLTEXT_ENABLED:false}
+    fulltext-min-keyword-length: ${PERF_FULLTEXT_MIN_KEYWORD_LENGTH:2}
+    # 把 status <> 'OFFLINE' 改写为可见状态枚举 IN，让复合索引可做范围扫描；默认关闭以保证结果集完全一致
+    status-enum-enabled: ${PERF_STATUS_ENUM_ENABLED:false}
+    # 距离排序的经纬度 bounding box 下推；默认关闭，开启后只展示附近物品（total 随坐标变化）
+    distance-bbox-enabled: ${PERF_DISTANCE_BBOX_ENABLED:false}
+    distance-bbox-km: ${PERF_DISTANCE_BBOX_KM:50}
+    # 缓存与可观测性（秒 / 毫秒）
+    count-cache-seconds: ${PERF_COUNT_CACHE_SECONDS:30}
+    latest-cache-seconds: ${PERF_LATEST_CACHE_SECONDS:300}
+    stats-cache-seconds: ${PERF_STATS_CACHE_SECONDS:60}
+    map-max-limit: ${PERF_MAP_MAX_LIMIT:100}
+    slow-sql-ms: ${PERF_SLOW_SQL_MS:300}
+    slow-sql-log-interval-seconds: ${PERF_SLOW_SQL_LOG_INTERVAL_SECONDS:10}
 
 logging:
   level:

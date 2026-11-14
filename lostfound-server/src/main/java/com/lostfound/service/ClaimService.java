@@ -42,6 +42,7 @@ public class ClaimService {
     private final FoundMapper foundMapper;
     private final SitePermissionService sitePermission;
     private final ReturnService returnService;
+    private final CacheEvictService cacheEvictService;
 
     @Transactional
     public Long submit(String type, Long itemId, Long userId, ClaimDTO dto) {
@@ -88,6 +89,7 @@ public class ClaimService {
                 : itemService.requireLost(itemId).getUserId();
         messageService.send(ownerId, "收到新的认领申请",
                 "您发布的信息收到了新的认领申请，请及时审核处理。", "CLAIM", itemId);
+        if (cacheEvictService != null) cacheEvictService.evictAll();
         return c.getId();
     }
 
@@ -176,6 +178,7 @@ public class ClaimService {
         if (approve) {
             messageService.send(ownerId, typeText + "已确认归还", "认领申请审核通过，物品已标记为已完成。", "CLAIM", c.getItemId());
         }
+        if (cacheEvictService != null) cacheEvictService.evictAll();
     }
 
     private List<ClaimVO> toVO(List<ClaimRequest> list) {

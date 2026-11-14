@@ -191,6 +191,8 @@ public class FoundSiteService {
         if (site == null) throw new BusinessException("招领站不存在");
         applyDto(site, dto);
         foundSiteMapper.updateById(site);
+        // 站点改名会影响物品 VO 中的 siteName，需失效首页/列表缓存
+        cacheEvict.evictLatest();
     }
 
     @Transactional

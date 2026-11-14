@@ -49,7 +49,7 @@ const load = async () => {
   loading.value = true
   activeItem.value = null
   try {
-    items.value = await itemApi.mapItems(mode.value, 300)
+    items.value = await itemApi.mapItems(mode.value, 100)
     renderMarkers()
   } finally {
     loading.value = false

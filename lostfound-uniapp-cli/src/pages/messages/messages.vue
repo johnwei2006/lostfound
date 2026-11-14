@@ -39,7 +39,9 @@
 import { ref } from 'vue'
 import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import { messageApi } from '@/utils/api'
+import { createDedupeGuard } from '@/utils/request-cache'
 
+const guard = createDedupeGuard(1500)
 const tabs = [
   { label: '全部', value: '' },
   { label: '匹配推荐', value: 'MATCH' },
@@ -66,7 +68,7 @@ const load = async () => {
 }
 const switchTab = (v) => {
   filter.value = v
-  load()
+  guard.run('tab:' + v, load)
 }
 const open = async (m) => {
   if (!m.isRead) {
@@ -83,6 +85,7 @@ const open = async (m) => {
 }
 const readAll = async () => {
   await messageApi.readAll()
+  guard.reset()
   load()
 }
 
@@ -94,8 +97,8 @@ const colorOf = (t) => ({
   SITE: '#7c3aed', SYSTEM: '#6b7280',
 }[t] || '#6b7280')
 
-onShow(load)
-onPullDownRefresh(load)
+onShow(() => guard.run('show:' + filter.value, load))
+onPullDownRefresh(() => { guard.reset(); load() })
 </script>
 
 <style scoped>

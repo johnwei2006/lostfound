@@ -8,6 +8,7 @@ import { CATEGORIES } from '@/types'
 import ItemCard from '@/components/ItemCard.vue'
 import LocationSwitch from '@/components/LocationSwitch.vue'
 import { currentLocation, ensureLocation, getCurrentLocation } from '@/utils/location'
+import { createDedupeGuard } from '@/utils/request-cache'
 import { useUserStore } from '@/stores/user'
 import { openQrLogin } from '@/composables/useQrLogin'
 
@@ -38,19 +39,24 @@ const loading = ref(false)
 /** 用户手动切换过排序后，不再因位置变化自动改动其选择 */
 const sortTouched = ref(false)
 
+/** 首屏 load 与定位完成后的 watch 可能拿到完全相同的条件，短 TTL 内只取一次 */
+const guard = createDedupeGuard(600)
+
 const load = async () => {
+  // 统一从定位模块读取，自动定位 / 手动选点 / 默认城市都走同一个入口
+  const loc = getCurrentLocation()
+  const params: ItemQuery = { ...query.value, keyword: query.value.keyword || undefined }
+  if (params.sort === 'distance') {
+    params.userLat = loc.latitude
+    params.userLng = loc.longitude
+  } else {
+    params.userLat = undefined
+    params.userLng = undefined
+  }
+  const key = `${props.type}|${JSON.stringify(params)}`
+  if (guard.shouldSkip(key)) return
   loading.value = true
   try {
-    // 统一从定位模块读取，自动定位 / 手动选点 / 默认城市都走同一个入口
-    const loc = getCurrentLocation()
-    const params: ItemQuery = { ...query.value, keyword: query.value.keyword || undefined }
-    if (params.sort === 'distance') {
-      params.userLat = loc.latitude
-      params.userLng = loc.longitude
-    } else {
-      params.userLat = undefined
-      params.userLng = undefined
-    }
     const data = await itemApi.page(props.type, params)
     list.value = data.records
     total.value = data.total

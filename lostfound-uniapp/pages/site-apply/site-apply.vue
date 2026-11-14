@@ -22,19 +22,19 @@
         <text class="lf-group-title">基础资料</text>
         <view class="form-row">
           <text class="form-label">站点名称 <text class="req">*</text></text>
-          <input v-model="form.name" class="lf-input" placeholder="如： XX 社区招领站" maxlength="100" />
+          <input v-model="form.name" class="lf-input" placeholder-class="lf-ph" placeholder="如： XX 社区招领站" maxlength="100" />
         </view>
         <view class="form-row">
           <text class="form-label">详细地址 <text class="req">*</text></text>
-          <input v-model="form.address" class="lf-input" placeholder="街道、门牌号等" maxlength="200" />
+          <input v-model="form.address" class="lf-input" placeholder-class="lf-ph" placeholder="街道、门牌号等" maxlength="200" />
         </view>
         <view class="form-row">
           <text class="form-label">联系电话</text>
-          <input v-model="form.phone" class="lf-input" placeholder="选填，方便平台联系" maxlength="20" />
+          <input v-model="form.phone" class="lf-input" placeholder-class="lf-ph" placeholder="选填，方便平台联系" maxlength="20" />
         </view>
         <view class="form-row">
           <text class="form-label">开放时间</text>
-          <input v-model="form.openTime" class="lf-input" placeholder="如： 周一至周五 9:00-18:00" maxlength="100" />
+          <input v-model="form.openTime" class="lf-input" placeholder-class="lf-ph" placeholder="如： 周一至周五 9:00-18:00" maxlength="100" />
         </view>
       </view>
 
@@ -52,15 +52,15 @@
         <text class="lf-group-title">补充说明</text>
         <view class="form-row">
           <text class="form-label">站点简介</text>
-          <textarea v-model="form.description" class="lf-input area" placeholder="场地、保管条件等（选填）" maxlength="1000" />
+          <textarea v-model="form.description" class="lf-input area" placeholder-class="lf-ph" placeholder="场地、保管条件等（选填）" maxlength="1000" />
         </view>
         <view class="form-row">
           <text class="form-label">申请理由 <text class="req">*</text></text>
-          <textarea v-model="form.reason" class="lf-input area" placeholder="为什么希望创建这个招领站" maxlength="500" />
+          <textarea v-model="form.reason" class="lf-input area" placeholder-class="lf-ph" placeholder="为什么希望创建这个招领站" maxlength="500" />
         </view>
         <view class="form-row">
           <text class="form-label">补充联系方式</text>
-          <input v-model="form.contact" class="lf-input" placeholder="微信号 / 邮箱（选填）" maxlength="100" />
+          <input v-model="form.contact" class="lf-input" placeholder-class="lf-ph" placeholder="微信号 / 邮箱（选填）" maxlength="100" />
         </view>
       </view>
 

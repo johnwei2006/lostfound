@@ -1,6 +1,8 @@
 package com.lostfound.dto;
 
+import lombok.AccessLevel;
 import lombok.Data;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 
@@ -40,6 +42,22 @@ public class ItemQuery {
 
     /** 内部使用：当前登录用户（“只看我的”场景） */
     private Long currentUserId;
+
+    /** 内部使用：/map 不需要分页总数；禁用 setter 防止被外部请求参数篡改 */
+    @Setter(AccessLevel.NONE)
+    private boolean countDisabled;
+    /** 内部使用：/map 只返回带坐标的记录 */
+    @Setter(AccessLevel.NONE)
+    private boolean requireCoordinates;
+
+    /**
+     * 仅由服务端 /map 调用：在数据库侧下推坐标非空条件，并跳过无用的 COUNT。
+     * 前端原本就会丢弃无坐标记录，因此展示结果保持不变。
+     */
+    public void enableMapMode() {
+        this.countDisabled = true;
+        this.requireCoordinates = true;
+    }
 
     /**
      * 经纬度是否在合法范围内。SQL 中的距离表达式只允许拼接这些已校验的数值字面量，

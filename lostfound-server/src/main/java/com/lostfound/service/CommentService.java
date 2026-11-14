@@ -40,10 +40,10 @@ public class CommentService {
         List<?> raw;
         if ("FOUND".equals(type)) {
             raw = foundCommentMapper.selectList(new QueryWrapper<FoundComment>()
-                    .eq("item_id", itemId).orderByAsc("create_time"));
+                    .eq("item_id", itemId).orderByAsc("create_time").last("limit 500"));
         } else {
             raw = lostCommentMapper.selectList(new QueryWrapper<LostComment>()
-                    .eq("item_id", itemId).orderByAsc("create_time"));
+                    .eq("item_id", itemId).orderByAsc("create_time").last("limit 500"));
         }
 
         Set<Long> userIds = raw.stream().map(c -> c instanceof FoundComment fc ? fc.getUserId() : ((LostComment) c).getUserId())

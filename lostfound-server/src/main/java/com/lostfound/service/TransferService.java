@@ -28,6 +28,9 @@ import com.lostfound.vo.SourceInfoVO;
 import com.lostfound.vo.TransferVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,6 +67,10 @@ public class TransferService {
     private final SitePermissionService sitePermission;
     private final CacheEvictService cacheEvict;
     private final ObjectMapper objectMapper;
+
+    /** 纯单元测试里可不注入，缺失时自动降级为直查 */
+    @Autowired(required = false)
+    private CacheManager cacheManager;
 
     public void requireSite(Long siteId) {
         if (siteId == null || foundSiteMapper.selectById(siteId) == null) {
@@ -291,9 +298,25 @@ public class TransferService {
         return vo;
     }
 
-    /** 站点管理后台概览统计 */
+    /**
+     * 站点管理后台概览统计：短 TTL 手写缓存，权限校验始终在缓存之前执行。
+     * 用存在性子查询替代「拉取站点全部物品 id 到应用层再拼大 IN」。
+     */
     public SiteStatsVO stats(Long siteId) {
         sitePermission.requireManager(siteId);
+        Cache cache = cacheManager == null ? null : cacheManager.getCache("siteStats");
+        if (cache != null) {
+            Cache.ValueWrapper wrapper = cache.get(siteId);
+            if (wrapper != null && wrapper.get() instanceof SiteStatsVO) {
+                return (SiteStatsVO) wrapper.get();
+            }
+        }
+        SiteStatsVO vo = computeStats(siteId);
+        if (cache != null) cache.put(siteId, vo);
+        return vo;
+    }
+
+    private SiteStatsVO computeStats(Long siteId) {
         SiteStatsVO vo = new SiteStatsVO();
         vo.setSiteId(siteId);
         vo.setPendingTransfers(transferMapper.selectCount(new QueryWrapper<FoundTransfer>()
@@ -303,20 +326,18 @@ public class TransferService {
                 .and(w -> w.eq("source_type", "SITE").or().eq("transfer_status", FoundTransfer.STATUS_APPROVED))));
         vo.setReturnedItems(returnMapper.selectCount(new QueryWrapper<FoundReturn>().eq("site_id", siteId)));
 
-        List<Long> itemIds = foundMapper.selectList(new QueryWrapper<Found>()
-                        .select("id").eq("site_id", siteId))
-                .stream().map(Found::getId).toList();
+        // siteId 为数值型，拼成字面量无注入风险；f.deleted = 0 与原 selectList 的逻辑删除口径一致
+        String siteItems = "SELECT 1 FROM `found` f WHERE f.`id` = `item_id` AND f.`site_id` = "
+                + siteId.longValue() + " AND f.`deleted` = 0";
         LocalDateTime today = LocalDate.now().atStartOfDay();
+        vo.setPendingClaims(claimRequestMapper.selectCount(new QueryWrapper<ClaimRequest>()
+                .eq("item_type", "FOUND").eq("status", ClaimRequest.STATUS_PENDING)
+                .exists(siteItems)));
+        long handledClaims = claimRequestMapper.selectCount(new QueryWrapper<ClaimRequest>()
+                .eq("item_type", "FOUND").ne("status", ClaimRequest.STATUS_PENDING)
+                .ge("update_time", today).exists(siteItems));
         long handledTransfers = transferMapper.selectCount(new QueryWrapper<FoundTransfer>()
                 .eq("site_id", siteId).ne("status", FoundTransfer.STATUS_PENDING).ge("review_time", today));
-        long handledClaims = 0;
-        if (!itemIds.isEmpty()) {
-            vo.setPendingClaims(claimRequestMapper.selectCount(new QueryWrapper<ClaimRequest>()
-                    .eq("item_type", "FOUND").eq("status", ClaimRequest.STATUS_PENDING).in("item_id", itemIds)));
-            handledClaims = claimRequestMapper.selectCount(new QueryWrapper<ClaimRequest>()
-                    .eq("item_type", "FOUND").ne("status", ClaimRequest.STATUS_PENDING)
-                    .in("item_id", itemIds).ge("update_time", today));
-        }
         vo.setTodayHandled(handledTransfers + handledClaims);
         return vo;
     }

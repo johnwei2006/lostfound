@@ -91,7 +91,9 @@
 import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { itemApi, focusApi, matchApi, transferApi, siteApi } from '@/utils/api'
+import { createDedupeGuard } from '@/utils/request-cache'
 
+const guard = createDedupeGuard(1200)
 const mode = ref('published')
 const curType = ref('lost')
 const list = ref([])
@@ -213,7 +215,7 @@ const cancelTransfer = (it) => {
 onLoad((options) => {
   mode.value = options.mode || 'published'
 })
-onShow(load)
+onShow(() => guard.run('list:' + mode.value, load))
 </script>
 
 <style scoped>

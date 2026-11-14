@@ -9,6 +9,7 @@
       <input
         v-model="code"
         class="lf-input code-input"
+        placeholder-class="lf-ph"
         placeholder="请输入 8 位邀请码"
         maxlength="32"
         :disabled="status === 'loading' || status === 'done'"

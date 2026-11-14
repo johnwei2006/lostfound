@@ -61,7 +61,9 @@ import { ref } from 'vue'
 import { onPullDownRefresh, onReachBottom, onShow, onUnload } from '@dcloudio/uni-app'
 import { itemApi, CATEGORIES } from '@/utils/api'
 import { getCurrentLocation, subscribeLocation } from '@/utils/location'
+import { createDedupeGuard } from '@/utils/request-cache'
 
+const guard = createDedupeGuard(800)
 const keyword = ref('')
 const mode = ref('found')
 const category = ref('')
@@ -185,11 +187,12 @@ const goMap = () => uni.navigateTo({ url: '/pages/map/map' })
 const unsubscribe = subscribeLocation((next) => {
   const loc = next || getCurrentLocation()
   if (!sortTouched.value) sort.value = loc.available ? 'distance' : 'time'
+  guard.reset()
   load(true)
 })
 
-onShow(() => load(true))
-onPullDownRefresh(() => load(true))
+onShow(() => guard.run('home', () => load(true)))
+onPullDownRefresh(() => { guard.reset(); load(true) })
 onReachBottom(() => load())
 onUnload(() => {
   if (retryTimer) clearTimeout(retryTimer)

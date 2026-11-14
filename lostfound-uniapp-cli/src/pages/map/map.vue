@@ -81,7 +81,7 @@ const markers = computed(() =>
 
 const load = async () => {
   try {
-    items.value = await itemApi.mapItems(mode.value, 300)
+    items.value = await itemApi.mapItems(mode.value, 100)
     active.value = null
   } catch (e) {
     console.error(e)

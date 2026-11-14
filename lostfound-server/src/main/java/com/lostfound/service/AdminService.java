@@ -15,11 +15,16 @@ import com.lostfound.mapper.MatchRecordMapper;
 import com.lostfound.mapper.UserMapper;
 import com.lostfound.vo.AdminStatsVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +42,14 @@ public class AdminService {
     private final MatchRecordMapper matchRecordMapper;
     private final ClaimRequestMapper claimRequestMapper;
     private final MessageService messageService;
+
+    /** 纯单元测试里可不注入，缺失时自动降级为直查 */
+    @Autowired(required = false)
+    private CacheManager cacheManager;
+
+    /** 审核后主动失效统计与列表缓存，避免 60 秒窗口内展示旧值 */
+    @Autowired(required = false)
+    private CacheEvictService cacheEvictService;
 
     /** 物品管理分页（type = FOUND / LOST） */
     public PageResult<Map<String, Object>> itemPage(String type, String reviewStatus, String status,
@@ -111,6 +124,7 @@ public class AdminService {
                             : "您发布的「" + l.getTitle() + "」未通过审核，已被下架。",
                     "SYSTEM", id);
         }
+        if (cacheEvictService != null) cacheEvictService.evictAll();
     }
 
     /** 用户分页 */
@@ -132,49 +146,100 @@ public class AdminService {
         userMapper.updateById(user);
     }
 
-    /** 统计概览 */
+    /**
+     * 统计概览：短 TTL 手写缓存（不用 @Cacheable，避免缓存命中绕过权限校验）。
+     * SQL 次数由 39 条降到 9 条：单表条件聚合 + 一次日期分组替代 14 天循环 COUNT。
+     */
     public AdminStatsVO stats() {
+        Cache cache = cacheManager == null ? null : cacheManager.getCache("adminOverview");
+        if (cache != null) {
+            Cache.ValueWrapper wrapper = cache.get(CacheEvictService.OVERVIEW_CACHE_KEY);
+            if (wrapper != null && wrapper.get() instanceof AdminStatsVO) {
+                return (AdminStatsVO) wrapper.get();
+            }
+        }
+        AdminStatsVO vo = computeStats();
+        if (cache != null) cache.put(CacheEvictService.OVERVIEW_CACHE_KEY, vo);
+        return vo;
+    }
+
+    private AdminStatsVO computeStats() {
         AdminStatsVO vo = new AdminStatsVO();
+        Map<String, Object> fa = conditionalAgg(true);
+        Map<String, Object> la = conditionalAgg(false);
         vo.setUserCount(userMapper.selectCount(null));
-        vo.setFoundCount(foundMapper.selectCount(null));
-        vo.setLostCount(lostMapper.selectCount(null));
-        vo.setWaitingFound(foundMapper.selectCount(new QueryWrapper<Found>().eq("status", Found.STATUS_WAITING)));
-        vo.setWaitingLost(lostMapper.selectCount(new QueryWrapper<Lost>().eq("status", Lost.STATUS_WAITING)));
+        vo.setFoundCount(asLong(fa.get("total")));
+        vo.setLostCount(asLong(la.get("total")));
+        vo.setWaitingFound(asLong(fa.get("waiting")));
+        vo.setWaitingLost(asLong(la.get("waiting")));
+        vo.setPendingReview(asLong(fa.get("pending")) + asLong(la.get("pending")));
         vo.setMatchCount(matchRecordMapper.selectCount(null));
         vo.setClaimPending(claimRequestMapper.selectCount(
                 new QueryWrapper<ClaimRequest>().eq("status", ClaimRequest.STATUS_PENDING)));
-        vo.setPendingReview(
-                foundMapper.selectCount(new QueryWrapper<Found>().eq("review_status", "PENDING"))
-                        + lostMapper.selectCount(new QueryWrapper<Lost>().eq("review_status", "PENDING")));
+        vo.setTrend(trend());
+        vo.setCategoryStats(categoryStats());
+        return vo;
+    }
 
-        // 近 14 天发布趋势
-        List<Map<String, Object>> trend = new ArrayList<>();
+    /** 单表一次扫描得到总数、进行中数量与待审核数量；状态值来自代码常量，不来自请求参数 */
+    private Map<String, Object> conditionalAgg(boolean found) {
+        String waiting = found ? Found.STATUS_WAITING : Lost.STATUS_WAITING;
+        String waitingExpr = "SUM(CASE WHEN status = '" + waiting + "' THEN 1 ELSE 0 END) AS waiting";
+        String pendingExpr = "SUM(CASE WHEN review_status = 'PENDING' THEN 1 ELSE 0 END) AS pending";
+        List<Map<String, Object>> rows = found
+                ? foundMapper.selectMaps(new QueryWrapper<Found>()
+                        .select("COUNT(*) AS total", waitingExpr, pendingExpr))
+                : lostMapper.selectMaps(new QueryWrapper<Lost>()
+                        .select("COUNT(*) AS total", waitingExpr, pendingExpr));
+        return rows.isEmpty() ? Map.of() : rows.get(0);
+    }
+
+    /** 近 14 天趋势：两张表各一次 GROUP BY，缺失日期在应用层补 0 */
+    private List<Map<String, Object>> trend() {
         LocalDate today = LocalDate.now();
+        LocalDateTime from = today.minusDays(13).atStartOfDay();
+        List<Map<String, Object>> foundRows = foundMapper.selectMaps(new QueryWrapper<Found>()
+                .select("DATE(create_time) AS d", "COUNT(*) AS cnt")
+                .ge("create_time", from).groupBy("DATE(create_time)"));
+        List<Map<String, Object>> lostRows = lostMapper.selectMaps(new QueryWrapper<Lost>()
+                .select("DATE(create_time) AS d", "COUNT(*) AS cnt")
+                .ge("create_time", from).groupBy("DATE(create_time)"));
+        Map<String, Long> foundByDay = dayCount(foundRows);
+        Map<String, Long> lostByDay = dayCount(lostRows);
+        List<Map<String, Object>> trend = new ArrayList<>();
         for (int i = 13; i >= 0; i--) {
             LocalDate day = today.minusDays(i);
-            LocalDateTime start = day.atStartOfDay();
-            LocalDateTime end = day.plusDays(1).atStartOfDay();
+            String key = day.toString();
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("date", day.toString().substring(5));
-            row.put("found", foundMapper.selectCount(new QueryWrapper<Found>()
-                    .ge("create_time", start).lt("create_time", end)));
-            row.put("lost", lostMapper.selectCount(new QueryWrapper<Lost>()
-                    .ge("create_time", start).lt("create_time", end)));
+            row.put("date", key.substring(5));
+            row.put("found", foundByDay.getOrDefault(key, 0L));
+            row.put("lost", lostByDay.getOrDefault(key, 0L));
             trend.add(row);
         }
-        vo.setTrend(trend);
+        return trend;
+    }
 
-        // 类别分布（失物 + 拾物合并）
+    private static Map<String, Long> dayCount(List<Map<String, Object>> rows) {
+        Map<String, Long> map = new HashMap<>();
+        for (Map<String, Object> r : rows) {
+            Object day = r.get("d");
+            if (day != null) map.put(day.toString(), asLong(r.get("cnt")));
+        }
+        return map;
+    }
+
+    /** 类别分布（失物 + 拾物合并），原本就是两次批量 GROUP BY，保持不变 */
+    private List<Map<String, Object>> categoryStats() {
         Map<String, Long> categoryCount = new LinkedHashMap<>();
         foundMapper.selectMaps(new QueryWrapper<Found>()
                         .select("category", "COUNT(*) AS cnt").groupBy("category"))
                 .forEach(r -> categoryCount.merge(String.valueOf(r.get("category")),
-                        Long.valueOf(r.get("cnt").toString()), Long::sum));
+                        asLong(r.get("cnt")), Long::sum));
         lostMapper.selectMaps(new QueryWrapper<Lost>()
                         .select("category", "COUNT(*) AS cnt").groupBy("category"))
                 .forEach(r -> categoryCount.merge(String.valueOf(r.get("category")),
-                        Long.valueOf(r.get("cnt").toString()), Long::sum));
-        List<Map<String, Object>> categoryStats = categoryCount.entrySet().stream()
+                        asLong(r.get("cnt")), Long::sum));
+        return categoryCount.entrySet().stream()
                 .map(e -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("category", e.getKey());
@@ -183,7 +248,12 @@ public class AdminService {
                 })
                 .sorted((a, b) -> Long.compare((long) b.get("count"), (long) a.get("count")))
                 .collect(ArrayList::new, (list, m) -> list.add(m), ArrayList::addAll);
-        vo.setCategoryStats(categoryStats);
-        return vo;
+    }
+
+    /** MySQL COUNT/SUM 可能返回 Long / BigDecimal / BigInteger，统一安全转换 */
+    private static long asLong(Object value) {
+        if (value == null) return 0L;
+        if (value instanceof Number) return ((Number) value).longValue();
+        return new BigDecimal(value.toString()).longValue();
     }
 }

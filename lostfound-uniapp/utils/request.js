@@ -21,10 +21,42 @@ function normalizeData(data) {
   return cleaned
 }
 
+/**
+ * 相同 GET（url + data）只保留最后一个在飞请求。
+ * onShow、定位订阅、下拉刷新常在瞬间触发多次同参请求；旧请求真正 abort，
+ * 响应静默丢弃，避免后发先至覆盖新结果，也省掉后端无谓的查询。
+ */
+const inflight = new Map()
+
+function dedupeKey(options) {
+  if ((options.method || 'GET').toUpperCase() !== 'GET') return null
+  try {
+    return `${options.url}|${JSON.stringify(normalizeData(options.data) || {})}`
+  } catch (e) {
+    return null
+  }
+}
+
 function doRequest(options, retried = false) {
   return new Promise((resolve, reject) => {
+    const key = dedupeKey(options)
+    if (key) {
+      const prev = inflight.get(key)
+      if (prev) {
+        prev.cancelled = true
+        try {
+          if (prev.task && typeof prev.task.abort === 'function') prev.task.abort()
+        } catch (e) { /* 平台不支持 abort 时仅丢弃响应 */ }
+        inflight.delete(key)
+      }
+    }
+
+    const state = { cancelled: false, task: null }
+    const cleanup = () => {
+      if (key && inflight.get(key) === state) inflight.delete(key)
+    }
     const token = uni.getStorageSync('lf_token')
-    uni.request({
+    state.task = uni.request({
       url: BASE_URL + options.url,
       method: options.method || 'GET',
       data: normalizeData(options.data),
@@ -33,6 +65,8 @@ function doRequest(options, retried = false) {
         ...(options.header || {}),
       },
       success: async (res) => {
+        cleanup()
+        if (state.cancelled) return
         const body = res.data || {}
         if (body.code !== 0) {
           // 令牌过期：先静默重登并重试一次，不再直接打断用户跳登录页
@@ -57,10 +91,15 @@ function doRequest(options, retried = false) {
         resolve(body.data)
       },
       fail: (err) => {
+        cleanup()
+        if (state.cancelled) return
         uni.showToast({ title: '网络异常，请检查后端服务', icon: 'none' })
         reject(err)
       },
     })
+    if (key) inflight.set(key, state)
+    // 页面可拿到 requestTask，在 onUnload 等时机主动取消
+    if (options.onTask && state.task) options.onTask(state.task)
   })
 }
 

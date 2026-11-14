@@ -81,7 +81,7 @@ public class SiteApplicationService {
     public List<SiteApplicationVO> mine(Long userId) {
         if (userId == null) throw new BusinessException(401, "请先登录");
         List<SiteApplication> list = applicationMapper.selectList(new QueryWrapper<SiteApplication>()
-                .eq("applicant_user_id", userId).orderByDesc("create_time"));
+                .eq("applicant_user_id", userId).orderByDesc("create_time").last("limit 200"));
         return toVOs(list);
     }
 

@@ -22,7 +22,9 @@
 import { ref } from 'vue'
 import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import { siteApi } from '@/utils/api'
+import { createDedupeGuard } from '@/utils/request-cache'
 
+const guard = createDedupeGuard(1500)
 const list = ref([])
 const loading = ref(false)
 
@@ -48,8 +50,8 @@ const navigate = (s) => {
   })
 }
 
-onShow(load)
-onPullDownRefresh(load)
+onShow(() => guard.run('sites', load))
+onPullDownRefresh(() => { guard.reset(); load() })
 </script>
 
 <style scoped>

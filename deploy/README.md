@@ -398,3 +398,29 @@ nginx -t && systemctl reload nginx
 - **实际部署顺序与结果**：① `site-owner-migrate.js survey`（`foundsite` 21 行 / `foundsite_manager` 4 行，新列与邀请码表均不存在）→ `dry-run` → `apply`（加 `owner_user_id`、建 `foundsite_manager_invite`、回填 4 行）→ `verify`（`PASS`，owner 与关系行一致、行数未变）；② `node deploy/remote-deploy.js backend`（新 jar 上线、`systemctl restart lostfound`，`/api/foundsite/page` 返回项已带 `ownerUserId`）；③ `node deploy/remote-deploy.js web`（主 chunk `index-CWVB1yjU.js` 线上 200）；④ `verify-site-owner-online.js` + 浏览器回归 + 邀请码链路写入回归。
 - **线上回归明细**：HTTP 只读 16/16 PASS（首页资源、健康检查、公开列表、新接口未登录 `code=401`、超管登录、`/api/foundsite/mine` 的 `ownerUserId`、管理员列表 `isOwner`、邀请码列表、公开 `/managers` 未回归）；浏览器（Playwright CLI 0.1.24）在 `/admin/sites` 编辑 ID 39「中国农科院招领站」验证主管理员提示「本站主管理员：张三，不可在此名单中移除」、标签「张三（#1698） · 主管理员」、点击移除后标签自动加回并弹「主管理员不可在此移除，请先在小程序端转让主管理员」、原样保存后标签与 `isOwner:true` / `ownerUserId=1698` 均保持，截图 `site-owner-admin.png` 留在 dbtool 目录；邀请码最小写入：生成（`qrCode` 有效，未触发降级）→ 只读预览（`code=0`，站点名/邀请人/状态正确）→ 列表 → 撤销，最终状态 `REVOKED`，无待用邀请码残留。
 - **仍待人工**：微信开发者工具开启服务端口后上传 `1.7.0`（本轮 `upload` 仍报 `IDE service port disabled`，含此前 1.6.1 的界面调整），新页面发布后确认 `WX_SITE_INVITE_ENV_VERSION=release`；`manifest.json` 未声明 `__usePrivacyCheck__`（微信隐私强审项，需人工评估是否补充）；新超管首次登录后修改默认口令；工作区改动未提交。
+
+## 查询性能全链路优化上线记录（2026-11-14）
+
+**状态**：**已上线**。按「部署前基线 → 生产库幂等迁移 → `backend` → `web` → HTTP/DB/浏览器回归」顺序完成；三个涉及语义的开关 `fulltext-enabled` / `status-enum-enabled` / `distance-bbox-enabled` **全部保持 `false`**。页面外观、接口入参与返回结构未改，分页 `total` 仍为精确 COUNT。SSH/DB 口令以字符码注入进程环境变量，未落盘、未回显、未进仓库。设计与开关说明见根目录 `README.md` 的「查询性能设计」。
+
+- **部署前基线**：`dbtool/perf-baseline.js all before`（HTTP 5 次采样 + DB 元数据/EXPLAIN/行数，落 `perf-baseline-before.json`）。MySQL **5.6.51**，`ngramPlugin=[]`、`fulltextIndexes=[]`（`schema.sql` 的 `WITH PARSER ngram` 仅是声明，线上不可用），`query_cache_type=OFF`、`slow_query_log=OFF`、`innodb_buffer_pool_size=128MB`；`found.list.time` / `found.list.hot` / `found.keyword` / `found.distance` 均 `type=ALL, key=null, Using filesort`，`match_record.mine` 为 `ALL/4323 rows/Using filesort`。因此全文开关无条件可开性被排除，改为「全文粗召回 + LIKE 精确过滤 + 全路径降级」但保持关闭。
+- **本地验证**：后端 `mvn -q package` 8 个测试类 **53 例全绿**（新增 `ItemServicePerfTest` 6 例、`AdminServiceStatsTest` 4 例），jar `lostfound-server-1.0.0.jar`（30758682 字节）；Web `npm run build`（默认 PATH 的 Node v14 会因 `??=` 报错，切至 `C:/Programs/nodejs22.231` v22.23.1）通过，IDE 诊断 0；小程序 `npm run build:mp-weixin` 通过，两套源码排除 `project*.json` 后 **34 文件 diff=0**，`dist/build/mp-weixin` → `dist/dev/mp-weixin` 强同步 **BUILD_FILES=108 / DEV_DIFF=0 / DEV_TOTAL=109 / PRIVATE_KEPT=True**（用 Node 22 读 `app.json` 复核 `PAGES=19`、定位说明 17 字，规避 PowerShell `ConvertFrom-Json` 中文编码失败）。
+- **生产库迁移**：`dbtool/perf-index-migrate.js` 的 `survey / dry-run / apply / verify / rollback` 全幂等；`survey` 复核 MySQL 5.6.51、无 ngram/FULLTEXT、`status` 仅 `WAITING/FINISHED`；DDL 前建全表快照 **`perf_bak_20261114145901_*`**；`apply` 只 `ADD INDEX`、不删既有索引，**added=26 / skipped=0 / failed=0**，索引总数 158 → 223；`verify` **26/26 索引存在、7 张表行数全部未变**，同口径 EXPLAIN（含 MyBatis-Plus 自动附加的 `deleted=0`）`found.list.time` 由 `ALL/null` 变 `range/idx_perf_time`。人工等价 SQL 在 `lostfound-server/src/main/resources/sql/migration-perf-index.sql`（MySQL 5.6 兼容，无 CHECK / 生成列 / 函数索引）。
+- **部署**：① `node deploy/remote-deploy.js backend`（`systemctl restart lostfound` 重载新 jar，`health=200`、`active`、API sample 正常）；② `node deploy/remote-deploy.js web`（`https_api=200`、`https_web=200`、`nginx active`、HTTPS sample 正常）。未使用 `all`，未改动 `/etc/lostfound/lostfound.env`，JWT 未轮换。
+- **部署后性能对比**（`perf-baseline.js` before `14:03:01Z` → after `15:14:33Z`，HTTPS 5 次采样 p50，毫秒）：
+
+  | 接口 | before p50 | after p50 | 变化 |
+  |------|-----------:|----------:|-----:|
+  | `found.page.time` | 1147 | 227 | **-80.2%** |
+  | `found.page.hot` | 829 | 226 | **-72.7%** |
+  | `found.map` | 1198 | 331 | **-72.4%** |
+  | `lost.page.time` | 1558 | 227 | **-85.4%** |
+  | `lost.map` | 1352 | 379 | **-72.0%** |
+  | `found.page.city` | 533 | 227 | -57.4% |
+
+  p95 同步收敛（`found.page.time` 3212 → 532、`lost.page.time` 3503 → 535、`lost.map` 7440 → 1352）。**如实记录的例外**：`found.page.keyword` p50 227 → 307、`found.latest` 276 → 329 略升，但两者 p95 分别由 1865 → 533、586 → 790 收敛，且 `health`（178 → 306）主要是网络 RTT、不承载业务查询，回归脚本已将其排除劣化断言；`found.latest` 首次采集的 1248ms 为服务重启后缓存未热，预热复采稳定为 329ms。通用 EXPLAIN 里 `found.*` 仍显示 `ALL` 是因为该 SQL 未带逻辑删除列 `deleted=0`，**应用同口径以迁移脚本 `verify` 为准**。
+- **线上 HTTP/DB 回归**：`dbtool/verify-perf-online.js` 纯只读，**57 PASS / 0 FAIL**。分页 `total` 188 / 242 / 14 前后完全一致，排序不改变 total，关键词搜索仍有命中，返回字段 keys 一致；`/map` 数组长度保持 100（后端下推坐标非空条件后补齐，前端原本会丢弃无坐标记录，展示口径不变），`lost.map` 首条 id 660 → 659 与响应体略增即源于此。DB 侧 `match_record.mine` EXPLAIN `ALL/4323 rows/Using filesort` → `index/idx_perf_create_time/50 rows`，`foundsite_manager.byUser` `ALL` → `ref/idx_perf_user/1 row`，行数未减少。
+- **线上浏览器回归**：`dbtool/verify-perf-browser.js`（Node 22 + `playwright`，因 chrome-devtools MCP 不可用改用 Navigation Timing/FCP 近似 Core Web Vitals）**34 PASS / 0 FAIL**，6 组页面 `home` / `found.list` / `lost.list` / `found.search` / `map` / `admin.guard`：HTTP 均 200、标题正确、页面总数 188 / 242 / 14、无 JS 错误、无关键资源失败、FCP 全部 `good`（1373 / 115 / 276 / 135 / 142 / 402 ms；按 good `<1800`、needs-improvement `<3000`、poor `>=3000` 分级，仅拦截 poor）；`/admin/dashboard` 未登录正确重定向 `/login?redirect=/admin/dashboard`。报告 `perf-browser-report.json`、截图 `perf-browser-shots/*.png`。列表页历史图片 `/image/*.jpeg` 404 已单独归类为非关键资源，不阻断本轮性能回归。Playwright CLI 会话已 `close-all`。
+- **缓存与一致性**：Caffeine 单机，`latestItems` 300 秒、`itemCount` 30 秒、`siteStats` / `adminOverview` 60 秒；`CacheEvictService.evictLatest()` 兼容历史调用但升级为 `evictAll()`，发布、审核、转交、归还、认领、建站、评论、站点改名等写操作后主动失效，统计缓存用手写方式而非 `@Cacheable`，保证权限校验不被缓存命中绕过。慢 SQL 拦截器按阈值采样、只记录脱敏 statement 与耗时。
+- **清理与状态**：临时运维脚本保留在 `C:/Users/John/AppData/Local/Temp/dbtool/`（`perf-baseline.js`、`perf-index-migrate.js`、`verify-perf-online.js`、`verify-perf-browser.js` 及前后 JSON 报告，均可复用/复核）；仓库内无明文口令；`git diff --check` 通过、暂存区为空、未提交，用户既有未提交改动保持原状。
+- **仍待人工**：微信开发者工具开启服务端口后上传小程序产物（沿用前序记录）；若未来升级 MySQL 并加装 ngram/FULLTEXT，需先完成结果集一致性校验才可将 `fulltext-enabled` 置 `true`；`distance-bbox-enabled` / `status-enum-enabled` 同理默认不可开。

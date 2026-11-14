@@ -237,6 +237,18 @@ npm run dev
 | Google Map + 高德混用 | 高德统一（降级策略） |
 | FTP 图片上传 | 本地存储 + 压缩，可切 OSS |
 | 无审核/统计 | 物品审核 + 用户管理 + ECharts 统计 |
-=======
-# lostfound
+
+## 查询性能设计（2026-11-14）
+
+主链路 `ItemService.page()` 每次列表请求固定发出「1 次物理分页 + 1 次精确 COUNT（30 秒短 TTL 缓存）+ 批量 VO 转换」；`convertFound` 的站点名由逐条 `selectById` 改为一次 `selectBatchIds`。生产库补 26 个复合索引（`deleted` 作前导列，匹配 MyBatis-Plus 逻辑删除自动附加的条件），列表从全表扫描 + filesort 变为索引范围扫描。
+
+- **配置**：`application.yml` 的 `lostfound.perf.*`，均可用 `PERF_*` 环境变量覆盖。
+- **默认全部关闭的语义开关**（可回退、可降级）：
+  - `fulltext-enabled`：全文粗召回 `MATCH ... AGAINST` 叠加原 `LIKE` 精确过滤；短词、特殊字符、索引缺失或 SQL 异常一律降级回 `LIKE`。线上 MySQL 5.6.51 经 survey 确认**无 ngram 插件、无 FULLTEXT 索引**（`schema.sql` 的 `WITH PARSER ngram` 仅为声明），此开关必须保持 `false`。
+  - `status-enum-enabled`：把 `status <> 'OFFLINE'` 改写为可见状态枚举 `IN` 以走复合索引；字典外状态值会漏数据，默认关闭。
+  - `distance-bbox-enabled`：距离排序下推经纬度 bounding box，跨 ±180 拆两段 OR、极区纬度钳制、无坐标记录仍由 `IS NULL` 分支保留；开启后 `total` 随坐标变化，默认关闭。
+- **始终开启的安全项**：COUNT 短 TTL 缓存、站点名批量化、`/map` 下推坐标非空条件并跳过无用 COUNT、统计合并（`AdminService.stats()` 39 → 9 条 SQL、`TransferService.stats()` 改存在性子查询）、`MatchService.rebuildAll()` 分页批量、`myMatches()` 存在性子查询、评论/建站申请查询上界、慢 SQL 拦截器（只记录 statement 与耗时，参数脱敏、采样限流）。
+- **缓存**：Caffeine 单机，`latestItems` 300 秒、`itemCount` 30 秒、`siteStats` / `adminOverview` 60 秒；写操作经 `CacheEvictService.evictLatest()` / `evictAll()` 主动失效。统计缓存用手写方式而非 `@Cacheable`，保证权限校验不被缓存命中绕过。
+- **前端请求治理**：Web axios 层对相同 GET 自动 abort 旧在飞请求，`src/utils/request-cache.ts` 提供短 TTL 去重；小程序 `utils/request.js` 保留 `requestTask` 并支持 `abort()` / `onTask`，`utils/request-cache.js` 供 `onShow` / tab 切换去重。页面外观、接口入参与返回结构均未改变。
+- **索引与迁移**：`src/main/resources/sql/migration-perf-index.sql` 为人工等价版本（存储过程按 `information_schema.STATISTICS` 幂等判断，MySQL 5.6 兼容，无 CHECK / 生成列 / 函数索引）；生产上线以 `dbtool/perf-index-migrate.js` 的 `survey / dry-run / apply / verify / rollback` 为准，只 `ADD INDEX`、不删既有索引、DDL 前建全表快照。
 
