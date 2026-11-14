@@ -5,8 +5,10 @@ import { OfficeBuilding, Location, Phone, Clock } from '@element-plus/icons-vue'
 import { siteApi } from '@/api'
 import type { SiteVO } from '@/types'
 import SiteEndorsementCard from '@/components/SiteEndorsementCard.vue'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
+const store = useUserStore()
 const list = ref<SiteVO[]>([])
 const total = ref(0)
 const page = ref(1)
@@ -34,7 +36,7 @@ onMounted(load)
         <p class="lf-page-sub">拾获物品可就近交至招领站托管，失主可前往认领</p>
       </div>
       <div class="head-ops">
-        <el-button round @click="router.push('/site/apply')">申请创建招领站</el-button>
+        <el-button v-if="!store.isAdmin" round @click="router.push('/site/apply')">申请创建招领站</el-button>
         <el-input
           v-model="keyword"
           placeholder="搜索站点名称/地址"

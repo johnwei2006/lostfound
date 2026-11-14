@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Bell, User as UserIcon, ArrowDown, Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import type { ViewMode } from '@/stores/user'
+import { useSiteStore } from '@/stores/site'
 import { messageApi } from '@/api'
 import { openQrLogin } from '@/composables/useQrLogin'
 import QrLoginDialog from '@/components/QrLoginDialog.vue'
@@ -11,6 +13,7 @@ import QrLoginDialog from '@/components/QrLoginDialog.vue'
 const route = useRoute()
 const router = useRouter()
 const store = useUserStore()
+const siteStore = useSiteStore()
 
 const isDarkHeader = computed(() => route.path === '/')
 const keyword = ref('')
@@ -27,8 +30,31 @@ const loadUnread = async () => {
 watch(() => store.isLoggedIn, loadUnread, { immediate: true })
 setInterval(loadUnread, 60_000)
 
+// 站点管理员登录（账号密码或微信扫码共用 setSession）后选择视图身份；
+// needsIdentityChoice 要求 siteLoaded，确保已拿到 /me 的站点管理范围
+const identityDialogVisible = ref(false)
+watch(
+  () => store.needsIdentityChoice,
+  (need) => { identityDialogVisible.value = need },
+  { immediate: true }
+)
+const chooseIdentity = (mode: ViewMode) => {
+  store.setViewMode(mode)
+  identityDialogVisible.value = false
+  if (mode === 'manager') router.push('/manage')
+}
+const switchIdentity = () => {
+  const next: ViewMode = store.isManagerView ? 'personal' : 'manager'
+  store.setViewMode(next)
+  siteStore.reset()
+  router.push(next === 'manager' ? '/manage' : '/')
+}
+
 // 401 时 request.ts 已清 localStorage，这里同步 Pinia，且不再整页跳登录
-const onAuthExpired = () => store.logout()
+const onAuthExpired = () => {
+  store.logout()
+  siteStore.reset()
+}
 onMounted(() => {
   window.addEventListener('lf:auth-expired', onAuthExpired)
   // 登录响应只含基础 User，启动时刷新一次以拿到站点管理范围与最新角色
@@ -45,8 +71,11 @@ const onSearch = () => {
 const onCommand = (cmd: string) => {
   if (cmd === 'logout') {
     store.logout()
+    siteStore.reset()
     ElMessage.success('已退出登录')
     router.push('/')
+  } else if (cmd === 'switchIdentity') {
+    switchIdentity()
   } else {
     router.push(cmd)
   }
@@ -104,12 +133,26 @@ const onCommand = (cmd: string) => {
               </span>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="/profile">个人中心</el-dropdown-item>
-                  <el-dropdown-item command="/matches">匹配推荐</el-dropdown-item>
-                  <el-dropdown-item command="/site/apply" divided>申请创建招领站</el-dropdown-item>
-                  <el-dropdown-item command="/site/applications">我的建站申请</el-dropdown-item>
-                  <el-dropdown-item v-if="store.isSiteManager" command="/manage" divided>招领站管理</el-dropdown-item>
-                  <el-dropdown-item v-if="store.isAdmin" command="/admin" divided>管理后台</el-dropdown-item>
+                  <!-- 超级管理员：个人中心 + 管理后台（招领站/用户/招领信息分组在后台侧栏） -->
+                  <template v-if="store.isAdmin">
+                    <el-dropdown-item command="/profile">个人中心</el-dropdown-item>
+                    <el-dropdown-item command="/admin" divided>管理后台</el-dropdown-item>
+                  </template>
+                  <!-- 站点管理员·管理员身份 -->
+                  <template v-else-if="store.isManagerView">
+                    <el-dropdown-item command="/profile">个人信息</el-dropdown-item>
+                    <el-dropdown-item command="/manage" divided>招领站管理</el-dropdown-item>
+                    <el-dropdown-item command="/site/applications">招领站申请</el-dropdown-item>
+                    <el-dropdown-item command="switchIdentity" divided>切换为个人身份</el-dropdown-item>
+                  </template>
+                  <!-- 普通用户，或站点管理员·个人身份 -->
+                  <template v-else>
+                    <el-dropdown-item command="/profile">个人中心</el-dropdown-item>
+                    <el-dropdown-item command="/matches">匹配推荐</el-dropdown-item>
+                    <el-dropdown-item command="/site/apply" divided>申请创建招领站</el-dropdown-item>
+                    <el-dropdown-item command="/site/applications">我的建站申请</el-dropdown-item>
+                    <el-dropdown-item v-if="store.isSiteManager" command="switchIdentity" divided>切换为管理员身份</el-dropdown-item>
+                  </template>
                   <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -142,6 +185,25 @@ const onCommand = (cmd: string) => {
 
     <!-- 全局唯一扫码登录弹层，避免多页面重复轮询 -->
     <QrLoginDialog />
+
+    <!-- 站点管理员登录后的视图身份选择：仅影响菜单显示，不改真实权限 -->
+    <el-dialog
+      v-model="identityDialogVisible"
+      title="选择登录身份"
+      width="420px"
+      align-center
+      :show-close="false"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+    >
+      <p style="margin: 0; line-height: 1.7; color: #475569">
+        你同时是招领站管理员，请选择本次使用系统的身份。身份只影响菜单显示，之后可在顶栏随时切换。
+      </p>
+      <template #footer>
+        <el-button round @click="chooseIdentity('personal')">以个人身份使用</el-button>
+        <el-button type="primary" round @click="chooseIdentity('manager')">以管理员身份使用</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 

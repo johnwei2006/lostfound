@@ -361,3 +361,28 @@ nginx -t && systemctl reload nginx
 - **后端/Web 幂等重发布（2026-11-10）**：本地重新 `npm run build`（Web）与 `mvn -q -DskipTests package`（后端）后按 `backend → web` 分阶段重发布（未用 `all`）：`health=200`、`https_api=200`、`https_web=200`、`nginx=active`；只读回归 `verify-profile-autofill-online.js baseline` **8/8**、`verify-match-transfer-online.js baseline` **8/8**；本次构建的 `index-BkxnCWWZ.js` / `index-Ceh1mMJC.css` 线上均 200（产物新鲜度 2/2）。一次性校验脚本已删除，口令仅字符码注入进程环境变量。
 - **小程序界面调整 1.6.1（2026-11-10，纯前端）**：隐藏详情页评论功能（评论区/回复/底部入口/输入弹层/评论数与 `commentApi` 调用、相关样式全部移除；`utils/api.js` 的 `commentApi` 定义保留便于恢复，Web 端评论功能未改动）；tabBar 与页面标题「消息」→「通知」（空态「暂无通知」、扫码登录说明同步措辞，图标文件名与后端 MESSAGE 类型不变）；「我的」页菜单「招领站」→「附近招领站」（`pages/sites/sites` 页标题保持不变）。两套 uni-app 源码 `diff=[]`，`npm run build:mp-weixin` 通过，产物强同步 dev 且构建结果无评论 UI 残留；`cli.bat upload -v 1.6.1` 仍因 `IDE service port disabled` 失败，需人工开启服务端口后上传并到公众平台提交审核。本轮后端/Web/数据库无改动，未重新部署服务器。
 - **dev 产物同步失效修复（2026-11-10）**：发现临时运维目录中 `sync-mp-dev.js` / `verify-mp-sources.js` 被系统清空为 0 字节，前几轮记录的「强同步 dev / 双源码校验」实为 `node` 执行空文件（exit 0、无输出），`dist/dev/mp-weixin` 仍保留旧版 `detail.wxml`（含评论区），微信开发者工具打开 dev 目录时看到的仍是旧界面。已改用内联 PowerShell 修复：保留 `project.private.config.json` 后删除 dev 全部内容、从 build 全量复制，**70 个文件逐文件哈希比对 `diff_count=0`**；UTF-8 精确校验 dev：`detail.wxml` 无「评论」、mine 有「附近招领站」、messages 有「暂无通知」、`app.json` tabBar 为「通知」。两套源码全量内联比对：共同 31 个文件内容差异 0，仅 HBuilderX 版多 `project.config.json` / `project.private.config.json` 两个 IDE 配置。后续同步与校验不再依赖临时目录脚本。
+
+## 超管界面清理与新增超级管理员上线记录（2026-11-14）
+
+**范围**：Web 前端可见性 + 线上账号数据变更；后端代码、数据库结构、小程序均未改动，因此**未重启后端**。
+
+- **前端隐藏（仅对 `store.isAdmin`）**：`App.vue` 顶栏「申请创建招领站」「我的建站申请」两项、`ProfileView.vue` 建站申请摘要卡片（并跳过 `siteApplicationApi.mine()` 请求、watch 随角色变化刷新）、`SiteListView.vue`「申请创建招领站」按钮。保留后台「建站申请审核」`/admin/site-applications`、「招领站管理」`/admin/sites`、顶栏「招领站管理」`/manage` 与「管理后台」；未删页面、未改路由守卫、未改后端接口权限——ADMIN 手动输入 `/site/apply` 或 `/site/applications` 仍可打开（按确认口径）。
+- **构建环境**：默认 PATH 的 Node 为 v14.21.3，`@vue/language-core` 的 `??=` 语法导致 `vue-tsc -b` 报错；切换到 `C:/Programs/nodejs22.231`（v22.23.1）后 `npm run build` 通过（类别字典 `--check` + `vue-tsc -b` + vite build）。静态核对：`ProfileView` / `SiteListView` 新 chunk 均含 `isAdmin` 条件，主 chunk 仍保留面向普通用户的申请入口文案。
+- **部署**：`node deploy/remote-deploy.js web`（未用 `all`），`https_api=200`、`https_web=200`、`nginx=active`；本次构建的 `index-CB9rtlfY.js` / `index-D481RNTi.css` / `ProfileView-ZGcNUmcf.js` / `SiteListView-DlKbbvSp.js` 线上均 200。
+- **新增超级管理员**：原计划「按 13910752299 提升现有用户」，但只读勘察显示该号码在 `user.contact/phone/username`、建站申请表、模糊匹配中均不存在（微信登录只拿 openid，系统无真实微信号），按约定停止并回来确认。用户确认改为**新建账号**：经 `/api/auth/register` 注册（登录名 `13910752299`、昵称同登录名、初始口令为系统默认口令，需首次登录改密），再由 SSH 隧道仅执行 `UPDATE user SET role='ADMIN'`；`phone/contact/email` 保持 NULL，原 `admin` 账号未改动。新账号 `id=1707`，线上启用 ADMIN 总数 2。
+- **线上回归**：`create-superadmin.js` 幂等执行 **10/10**（账号幂等跳过创建、role=ADMIN、联系方式字段未写入、新超管登录与 `/api/auth/me` role=ADMIN、`/api/site-applications/page` 200、未登录 401、普通用户 403、原 admin 状态正常、临时普通用户已删除）；`verify-profile-autofill-online.js baseline` **8/8**、`verify-match-transfer-online.js baseline` **8/8**；新 chunk 线上可访问 4/4。
+- **发现项**：原 `admin` 用默认口令登录返回 `code=400`，说明默认口令已被轮换（账号 DB 状态 `role=ADMIN / status=1 / deleted=0` 正常）；**未重置密码、未尝试其它口令**，回归断言改为 DB 状态校验。
+- **凭据与清理**：口令以字符码注入进程环境变量（不进命令行、不写文件、不回显）；一次性脚本 `promote-superadmin.js`、`locate-superadmin-candidate.js`、`create-superadmin.js` 已删除；仓库内无新增明文口令；`git diff --check` 通过、暂存区为空、未提交。
+- **仍待人工**：新超管首次登录后立即修改默认口令；如需彻底禁止 ADMIN 直接访问申请人侧页面，需另做路由守卫改造（本轮按确认口径未做）。
+
+## 三类用户 Web 功能菜单改造上线记录（2026-11-14）
+
+**范围**：仅 Web 前端视图与菜单分组；后端代码、数据库、小程序、路由守卫与接口权限均未改动，按 `web` 分阶段部署，**未重启后端**。保留顶栏下拉 + `/admin` / `/manage` 两套侧栏与全部公共功能（公共导航、搜索、消息铃铛、个人中心内部标签），复用现有页面，只改菜单名称与分组。
+
+- **改动**：`stores/user.ts` 新增 `ViewMode`（`manager` / `personal`）、`lf_view_mode` 记忆（单 key 存 `{userId, mode}`，读取时校验用户 id，登出清除）、`isManagerView` / `needsIdentityChoice` getter 与 `setViewMode()`；`stores/site.ts` 新增 `reset()`；`App.vue` 按三类角色渲染顶栏下拉、全局身份选择弹窗与切换入口，401/登出同步清空站点缓存；`views/admin/AdminLayout.vue` 侧栏改为「招领站管理 / 用户信息 / 招领信息」三组；`views/manage/ManageLayout.vue` 侧栏按 `siteStore.sites.length` 分组，有可管理站点才显示「站点资料」。
+- **身份弹窗**：挂在 `App.vue`（账号密码登录、注册、微信扫码登录共用 `setSession()`，三条链路全覆盖）；`needsIdentityChoice` 要求 `siteLoaded`，即等 `/api/auth/me` 返回 `siteManager` / `managedSiteIds` 后再判断，避免登录接口只返回基础 `User` 时误判。切换身份只改前端视图，真实权限仍以后端 `SitePermissionService` 为准。
+- **构建与部署**：默认 PATH 的 Node v14 会导致 `vue-tsc` 因 `??=` 报错，切换 `C:/Programs/nodejs22.231`（v22.23.1）后 `npm run build` 通过（主 chunk `index-CjhXVw1R.js`）；`node deploy/remote-deploy.js web`，`https_api=200`、`https_web=200`、`nginx=active`；线上冒烟 `/`、`/api/health`、`/login` 均 200。
+- **线上浏览器回归（9 组全通过）**：真实 `13910752299` 账号登录验证 ADMIN 下拉仅「个人中心 / 管理后台 / 退出登录」、`/admin` 三组六个菜单文案正确；普通用户与站点管理员视图为避免新建线上账号，在浏览器内仅改 Pinia state 模拟，不触碰后端数据——普通用户下拉为「个人中心 / 匹配推荐 / 申请创建招领站 / 我的建站申请 / 退出登录」；站点管理员登录后弹出「选择登录身份」，选管理员身份写入 `lf_view_mode={"userId":1707,"mode":"manager"}` 并跳 `/manage/items`，侧栏显示「招领站管理（站点物品 / 转交与认领审批 / 归还管理 / 站点资料）+ 招领站申请」，清空 `siteStore.sites` 后站点管理组与「站点资料」消失、仅剩「招领站申请」并提示未被指派站点；管理员身份下拉为「个人信息 / 招领站管理 / 招领站申请 / 切换为个人身份 / 退出登录」，切换个人身份后写回 `mode:"personal"`、跳 `/`、菜单恢复普通用户并多「切换为管理员身份」、`siteStore` 清空；登出后 `localStorage` 全部清空（`lf_view_mode` 无残留）。
+- **未改动**：`/admin`（`admin: true`）与 `/manage`（`siteManager: true`）路由守卫、后端接口权限、申请人侧页面本身；ADMIN 手动输入 `/site/apply` 或 `/site/applications` 仍可打开（按确认口径「仅前端隐藏」）。
+- **清理与状态**：Playwright CLI 临时装在 `C:/Users/John/AppData/Local/Temp/dbtool/`（浏览器会话已登出），调试文件 `pw-check.js` 已删除；仓库内无新增明文口令；`git diff --check` 通过、暂存区为空、未提交。
+- **仍待人工**：新超管首次登录后立即修改默认口令；小程序 1.6.1 需开启微信开发者工具服务端口后上传并提交审核；`lostfound-uniapp/pages.json` 遗留的 `tabBar.position: "bottom"` 改动待用户决定是否保留并同步 CLI 版。

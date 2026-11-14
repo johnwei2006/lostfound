@@ -34,5 +34,12 @@ export const useSiteStore = defineStore('site', {
     select(id: number) {
       this.currentSiteId = id
     },
+    /** 切换身份或退出登录时清空站点缓存，避免 /manage 残留上一账号的站点 */
+    reset() {
+      this.sites = []
+      this.currentSiteId = null
+      this.loading = false
+      this.error = ''
+    },
   },
 })

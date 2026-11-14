@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Back, CircleCheck, Goods, OfficeBuilding, Refresh, Tickets } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
@@ -10,12 +10,26 @@ const router = useRouter()
 const userStore = useUserStore()
 const siteStore = useSiteStore()
 
-const menus = [
-  { path: '/manage/items', label: '站点物品', icon: Goods },
-  { path: '/manage/transfers', label: '转交与认领审批', icon: Tickets },
-  { path: '/manage/returns', label: '归还管理', icon: CircleCheck },
-  { path: '/manage/site', label: '站点资料与背书', icon: OfficeBuilding },
-]
+/** 站点管理员工作台：有可管理站点才显示站点管理组（含站点资料），申请组始终可见 */
+const menuGroups = computed(() => {
+  const groups: { title: string; items: { path: string; label: string; icon: Component }[] }[] = []
+  if (siteStore.sites.length > 0) {
+    groups.push({
+      title: '招领站管理',
+      items: [
+        { path: '/manage/items', label: '站点物品', icon: Goods },
+        { path: '/manage/transfers', label: '转交与认领审批', icon: Tickets },
+        { path: '/manage/returns', label: '归还管理', icon: CircleCheck },
+        { path: '/manage/site', label: '站点资料', icon: OfficeBuilding },
+      ],
+    })
+  }
+  groups.push({
+    title: '招领站申请',
+    items: [{ path: '/site/applications', label: '我的建站申请', icon: Tickets }],
+  })
+  return groups
+})
 
 const noSite = computed(() => !siteStore.loading && !siteStore.error && siteStore.sites.length === 0)
 
@@ -51,16 +65,19 @@ onMounted(() => siteStore.load())
       </div>
 
       <nav class="admin-nav" aria-label="站点管理菜单">
-        <RouterLink
-          v-for="m in menus"
-          :key="m.path"
-          :to="m.path"
-          class="admin-link"
-          :class="{ active: route.path.startsWith(m.path) }"
-        >
-          <el-icon :size="16"><component :is="m.icon" /></el-icon>
-          {{ m.label }}
-        </RouterLink>
+        <template v-for="g in menuGroups" :key="g.title">
+          <p style="margin: 14px 0 6px; padding: 0 12px; font-size: 12px; color: #94a3b8; letter-spacing: 1px">{{ g.title }}</p>
+          <RouterLink
+            v-for="m in g.items"
+            :key="m.path"
+            :to="m.path"
+            class="admin-link"
+            :class="{ active: route.path.startsWith(m.path) }"
+          >
+            <el-icon :size="16"><component :is="m.icon" /></el-icon>
+            {{ m.label }}
+          </RouterLink>
+        </template>
       </nav>
 
       <div class="admin-user">

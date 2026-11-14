@@ -33,13 +33,13 @@ const pwdForm = ref({ oldPassword: '', newPassword: '', confirm: '' })
 /** 个人中心只展示最近一条建站申请摘要，完整列表在 /site/applications */
 const latestApplication = ref<SiteApplication | null>(null)
 const loadLatestApplication = async () => {
-  if (!store.isLoggedIn) { latestApplication.value = null; return }
+  if (!store.isLoggedIn || store.isAdmin) { latestApplication.value = null; return }
   try {
     const apps = await siteApplicationApi.mine()
     latestApplication.value = apps[0] || null
   } catch { latestApplication.value = null }
 }
-watch(() => store.isLoggedIn, loadLatestApplication, { immediate: true })
+watch([() => store.isLoggedIn, () => store.isAdmin], loadLatestApplication, { immediate: true })
 
 const pendingTransfers = computed(() => transfers.value.filter((t) => t.status === 'PENDING').length)
 
@@ -170,7 +170,7 @@ const cancelTransfer = async (t: TransferVO) => {
       </el-button>
     </div>
 
-    <div v-if="store.isLoggedIn" class="lf-card apply-summary">
+    <div v-if="store.isLoggedIn && !store.isAdmin" class="lf-card apply-summary">
       <div class="apply-summary__body">
         <b>招领站共建</b>
         <p v-if="latestApplication">

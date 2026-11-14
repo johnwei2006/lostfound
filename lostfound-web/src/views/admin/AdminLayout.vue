@@ -7,12 +7,28 @@ const route = useRoute()
 const router = useRouter()
 const store = useUserStore()
 
-const menus = [
-  { path: '/admin/dashboard', label: '数据统计', icon: DataAnalysis },
-  { path: '/admin/items', label: '物品审核', icon: Files },
-  { path: '/admin/site-applications', label: '建站申请审核', icon: Tickets },
-  { path: '/admin/sites', label: '招领站管理', icon: OfficeBuilding },
-  { path: '/admin/users', label: '用户管理', icon: User },
+/** 超级管理员工作台：招领站管理 / 用户信息 / 招领信息 三组，均复用现有页面 */
+const menuGroups = [
+  {
+    title: '招领站管理',
+    items: [
+      { path: '/admin/site-applications', label: '建站申请审核', icon: Tickets },
+      { path: '/admin/sites', label: '招领站列表及详情', icon: OfficeBuilding },
+    ],
+  },
+  {
+    title: '用户信息',
+    items: [
+      { path: '/admin/dashboard', label: '用户统计', icon: DataAnalysis },
+      { path: '/admin/users', label: '用户信息管理', icon: User },
+    ],
+  },
+  {
+    title: '招领信息',
+    items: [
+      { path: '/admin/items', label: '招领信息统计及详情', icon: Files },
+    ],
+  },
 ]
 </script>
 
@@ -28,10 +44,19 @@ const menus = [
         <span>百觅 · 管理后台</span>
       </div>
       <nav class="admin-nav">
-        <RouterLink v-for="m in menus" :key="m.path" :to="m.path" class="admin-link" :class="{ active: route.path.startsWith(m.path) }">
-          <el-icon :size="16"><component :is="m.icon" /></el-icon>
-          {{ m.label }}
-        </RouterLink>
+        <template v-for="g in menuGroups" :key="g.title">
+          <p style="margin: 14px 0 6px; padding: 0 12px; font-size: 12px; color: #94a3b8; letter-spacing: 1px">{{ g.title }}</p>
+          <RouterLink
+            v-for="m in g.items"
+            :key="m.path"
+            :to="m.path"
+            class="admin-link"
+            :class="{ active: route.path.startsWith(m.path) }"
+          >
+            <el-icon :size="16"><component :is="m.icon" /></el-icon>
+            {{ m.label }}
+          </RouterLink>
+        </template>
       </nav>
       <div class="admin-user">
         <el-avatar :size="30">{{ store.user?.nickname?.charAt(0) }}</el-avatar>
