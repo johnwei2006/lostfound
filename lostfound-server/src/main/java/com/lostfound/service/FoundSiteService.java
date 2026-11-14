@@ -120,11 +120,17 @@ public class FoundSiteService {
         Map<Long, User> users = userMapper.selectBatchIds(
                         list.stream().map(FoundSiteManager::getUserId).collect(Collectors.toSet()))
                 .stream().collect(Collectors.toMap(User::getId, Function.identity()));
-        return list.stream().map(m -> Map.<String, Object>of(
-                "id", m.getId(),
-                "userId", m.getUserId(),
-                "nickname", users.containsKey(m.getUserId()) ? users.get(m.getUserId()).getNickname() : "未知用户"
-        )).collect(Collectors.toList());
+        // 追加 isOwner 供 Web 超管名单标识主管理员；原三个 key 保持不变，公开详情页不受影响
+        Long ownerId = detail(siteId).getOwnerUserId();
+        return list.stream().map(m -> {
+            Map<String, Object> row = new java.util.HashMap<>();
+            row.put("id", m.getId());
+            row.put("userId", m.getUserId());
+            row.put("nickname", users.containsKey(m.getUserId())
+                    ? users.get(m.getUserId()).getNickname() : "未知用户");
+            row.put("isOwner", Objects.equals(ownerId, m.getUserId()));
+            return row;
+        }).collect(Collectors.toList());
     }
 
     /**
@@ -205,7 +211,11 @@ public class FoundSiteService {
         log.warn("招领站删除 siteId={}", id);
     }
 
-    /** 全量覆盖式管理员名单：去重、校验用户存在，并通知新增管理员 */
+    /**
+     * 全量覆盖式管理员名单：去重、校验用户存在，并通知新增管理员。
+     * 主管理员行始终保留，前端即使移除了标签也会被强制补回；
+     * 历史站点 owner_user_id 为空时，把名单首位指定为主管理员。
+     */
     @Transactional
     public void setManagers(Long siteId, List<Long> userIds) {
         FoundSite site = detail(siteId);
@@ -215,12 +225,28 @@ public class FoundSiteService {
                 if (uid != null && userMapper.selectById(uid) != null) target.add(uid);
             }
         }
+        Long ownerId = site.getOwnerUserId();
+        if (ownerId == null && !target.isEmpty()) {
+            ownerId = target.iterator().next();
+            foundSiteMapper.update(null, new LambdaUpdateWrapper<FoundSite>()
+                    .eq(FoundSite::getId, siteId)
+                    .set(FoundSite::getOwnerUserId, ownerId));
+            site.setOwnerUserId(ownerId);
+        }
+        if (ownerId != null) target.add(ownerId);
+
         Set<Long> existing = foundSiteManagerMapper.selectList(new QueryWrapper<FoundSiteManager>()
                         .select("user_id").eq("site_id", siteId))
                 .stream().map(FoundSiteManager::getUserId).collect(Collectors.toSet());
-        foundSiteManagerMapper.delete(new QueryWrapper<FoundSiteManager>().eq("site_id", siteId));
+        QueryWrapper<FoundSiteManager> deleteQuery = new QueryWrapper<FoundSiteManager>()
+                .eq("site_id", siteId);
+        if (ownerId != null) deleteQuery.notIn("user_id", List.of(ownerId));
+        foundSiteManagerMapper.delete(deleteQuery);
+
         LocalDateTime now = LocalDateTime.now();
         for (Long uid : target) {
+            // 主管理员行保留原有加入时间；仅在数据异常缺失时补插
+            if (Objects.equals(uid, ownerId) && existing.contains(ownerId)) continue;
             FoundSiteManager m = new FoundSiteManager();
             m.setSiteId(siteId);
             m.setUserId(uid);
@@ -234,7 +260,7 @@ public class FoundSiteService {
                         Message.TYPE_SITE, siteId);
             }
         }
-        log.warn("招领站管理员更新 siteId={} count={}", siteId, target.size());
+        log.warn("招领站管理员更新 siteId={} count={} ownerId={}", siteId, target.size(), ownerId);
     }
 
     private void applyDto(FoundSite site, SiteDTO dto) {

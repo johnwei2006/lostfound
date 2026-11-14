@@ -50,7 +50,7 @@
 
 ### 申请审核建站（推荐路径）
 
-注册用户无需变更 `user.role`，从顶栏「申请创建招领站」进入 `/site/apply` 提交站点资料、申请理由与联系方式；平台 `ADMIN` 在 `/admin/site-applications` 审核（超管不展示「申请创建招领站」「我的建站申请」等申请人侧入口，避免与审批入口混淆）。审核通过时在单事务内创建 `foundsite`、写入一条 `foundsite_manager`、回写 `created_site_id` 并发送 `SITE` 类型站内消息；驳回不创建任何站点。审核前不产生站点，申请人与平台均可追踪状态与审核意见。
+注册用户无需变更 `user.role`，从顶栏「申请创建招领站」进入 `/site/apply`（小程序为「我的」页同款表单）提交站点资料、申请理由与联系方式；平台 `ADMIN` 在 `/admin/site-applications` 审核（超管不展示「申请创建招领站」「我的建站申请」等申请人侧入口，避免与审批入口混淆）。审核通过时在单事务内创建 `foundsite`、写入 `foundsite.owner_user_id`（申请人成为该站主管理员）、插入一条 `foundsite_manager`、回写 `created_site_id` 并发送 `SITE` 类型站内消息；驳回不创建任何站点。审核前不产生站点，申请人与平台均可追踪状态与审核意见。
 
 ```
 注册/登录 → 提交申请(PENDING) → 平台审核 → APPROVED 自动建站并开通管理 / REJECTED 可修改重提
@@ -61,10 +61,32 @@
 | 未登录 | 只读浏览；提交申请返回 401 |
 | 注册用户 | 提交申请（同时仅一条 `PENDING`）、查看进度、撤回待审、驳回后修改重提 |
 | 平台 `ADMIN` | 筛选/通过/驳回申请；也可在 `/admin/sites` 直接建站并全量配置管理员；前端不展示申请人侧入口（顶栏两项、个人中心申请摘要、站点列表页申请按钮），后台审批/站点管理菜单与后端接口权限保持不变 |
-| 站点管理员 | 在 `/manage/site` 维护本站背书；权限仅来自 `foundsite_manager`，由 `/api/auth/me` 实时返回 |
+| 站点主管理员 | 身份来自 `foundsite.owner_user_id`；除站点管理外，可生成/撤销邀请码、移除共同管理员、转让主管理员 |
+| 站点共同管理员 | 身份来自 `foundsite_manager`；物品/审批/归还/背书与站点管理员一致，但不能邀请、移除或转让管理员 |
 | 普通已登录用户 | 站点资料与背书只读，维护接口返回 403 |
 
 申请接口独立挂在 `/api/site-applications`（避免与 `/api/foundsite/{id}` 字面量路径冲突）：`POST /` 提交、`GET /mine` 我的申请、`GET /page` 与 `PUT /{id}/review` 仅 ADMIN、`DELETE /{id}` 撤回待审。状态常量 `PENDING / APPROVED / REJECTED`；重复待审、非待审重复审核、申请人账号停用或仍有其它待审申请均由服务端拒绝，状态条件更新保证审核幂等。
+
+### 小程序建站申请与主/共同管理员（2026-11-14）
+
+小程序「我的」页新增「申请创建招领站」「我的建站申请」「招领站管理」「邀请码加入站点」入口，申请流程复用 `/api/site-applications`（保持「同一用户同时仅一条 `PENDING`」，审核通过后即可再申请下一站），审核仍只在 Web 超管后台完成。审核通过时 `SiteApplicationService.review()` 在单事务内写 `foundsite.owner_user_id`，申请人成为该站主管理员；主管理员标识放在 `foundsite` 单列，天然保证每站唯一，`foundsite_manager` 继续只表达「可管理该站」的关系，不给 `user.role` 增加新角色。
+
+| 能力 | 主管理员 | 共同管理员 |
+|------|----------|------------|
+| 查看管理员列表/详情、站点概览 | ✓ | ✓ |
+| 生成/撤销邀请码、移除共同管理员、转让主管理员 | ✓ | ✗ |
+| 物品、转交与认领审批、归还、站点资料（Web `/manage`） | ✓ | ✓ |
+
+- **邀请码加入**：主管理员生成 8 位邀请码（默认 24 小时，可选 24/72/168 小时），落库 `foundsite_manager_invite`；被邀请方输入或扫码进入确认页，`GET /invites/preview` 只读查看站点名与邀请人，确认时用条件更新 `WHERE status='PENDING' AND expire_time > NOW()` 一次性消费。过期、已使用、已撤销、已是管理员均给出明确提示，且异常时事务回滚恢复邀请码。共同管理员不能邀请他人。
+- **小程序码降级**：`WxAuthService.getMiniProgramCode(scene, page, envVersion)` 指定落地页 `pages/manage/invite-accept`、`scene` 为邀请码；新页面未发布或微信接口失败时返回 `qrCode=null`，前端降级为纯文本邀请码，主流程不受影响。
+- **转让**：目标必须是本站现有共同管理员；带旧 owner 值的条件更新避免并发双主，原主保留管理员行并降为共同管理员，双方收到 `SITE` 站内消息。
+- **多站点与数据隔离**：`utils/site-store.js` 保存 `sites / currentSiteId`，按 `userId` 隔离持久化、登出清空；顶部站点切换器常驻所有管理页，切换后立即清空并重载本页数据，所有请求显式带 `siteId`，后端 `requireManager` / `requireOwner` 兜底。一人可管理多个已通过站点。
+- **Web 同步**：`FoundSiteService.setManagers()` 全量覆盖时保留主管理员关系行并强制把 owner 补回名单，`owner_user_id` 为空的历史站点把名单首位指定为主管理员；`/admin/sites` 主管理员标签不可移除并提示先转让，`/manage/site` 展示主管理员。公开接口 `GET /api/foundsite/{id}/managers` 仅追加 `isOwner`，原有 `id/userId/nickname` 契约不变。
+- **本轮小程序范围**：申请与进度、多站点切换、站点概览、管理员列表/详情/邀请/移除/转让、邀请确认；站点物品、转交与认领审批、归还管理、站点资料仍在 Web `/manage`。
+
+新接口统一挂 `/api/site-managers`（全部 `@RequireLogin`）：`GET /{siteId}` 列表、`GET /{siteId}/members/{userId}` 详情、`POST|GET /{siteId}/invites`、`DELETE /{siteId}/invites/{inviteId}`、`GET /invites/preview`、`POST /invites/accept`、`DELETE /{siteId}/members/{userId}`、`POST /{siteId}/transfer`。管理员详情不返回 `openid` / 手机号，联系方式脱敏；日志只打印邀请码前 3 位。写操作在 Service 层用 `requireOwner` 校验，前端隐藏只是体验。
+
+生产迁移 SQL 见 `lostfound-server/src/main/resources/sql/migration-site-owner.sql`，MySQL 5.6 兼容、幂等，执行前需建 `foundsite` / `foundsite_manager` 全表快照。
 
 ### 自定义背书
 

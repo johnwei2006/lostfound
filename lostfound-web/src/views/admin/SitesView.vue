@@ -18,6 +18,15 @@ const editing = ref<FoundSite | null>(null)
 const form = ref<Partial<FoundSite>>({})
 const users = ref<User[]>([])
 const managerIds = ref<number[]>([])
+const ownerId = ref<number | null>(null)
+const ownerNickname = ref('')
+
+/** 主管理员标签不可移除：如需变更主管理员，请在小程序端先转让 */
+const onRemoveTag = (id: number) => {
+  if (id !== ownerId.value) return
+  managerIds.value = Array.from(new Set([...managerIds.value, id]))
+  ElMessage.warning('主管理员不可在此移除，请先在小程序端转让主管理员')
+}
 
 const load = async () => {
   loading.value = true
@@ -41,6 +50,8 @@ const openCreate = () => {
   editing.value = null
   form.value = { name: '', address: '', phone: '', openTime: '', description: '', endorsementOrg: '', endorsementText: '' }
   managerIds.value = []
+  ownerId.value = null
+  ownerNickname.value = ''
   loadUsers()
   dialog.value = true
 }
@@ -48,9 +59,17 @@ const openEdit = async (s: SiteVO) => {
   editing.value = s
   form.value = { ...s }
   managerIds.value = []
+  ownerId.value = s.ownerUserId ?? null
+  ownerNickname.value = ''
   loadUsers()
   try {
-    managerIds.value = (await siteApi.managers(s.id)).map((m) => m.userId)
+    const managers = await siteApi.managers(s.id)
+    managerIds.value = managers.map((m) => m.userId)
+    const owner = managers.find((m) => m.isOwner)
+    if (owner) {
+      ownerId.value = owner.userId
+      ownerNickname.value = owner.nickname
+    }
   } catch (e) { ElMessage.error(errMsg(e, '管理员名单加载失败')) }
   dialog.value = true
 }
@@ -62,9 +81,12 @@ const save = async () => {
   try {
     const siteId = editing.value ? editing.value.id : await siteApi.create(form.value)
     if (editing.value) await siteApi.update(siteId, form.value)
-    // 全量覆盖式名单，后端会去重并校验用户有效性
-    await siteApi.setManagers(siteId, managerIds.value)
-    ElMessage.success(`已保存站点信息，当前 ${managerIds.value.length} 位管理员`)
+    // 全量覆盖式名单：后端会强制保留主管理员，前端也补齐，避免出现「移除后又被加回」的错觉
+    const ids = ownerId.value && !managerIds.value.includes(ownerId.value)
+      ? [...managerIds.value, ownerId.value]
+      : managerIds.value
+    await siteApi.setManagers(siteId, ids)
+    ElMessage.success(`已保存站点信息，当前 ${ids.length} 位管理员`)
     dialog.value = false
     load()
   } catch (e) { ElMessage.error(errMsg(e, '保存失败')) }
@@ -144,11 +166,14 @@ const remove = async (s: SiteVO) => {
         <el-form-item label="背书单位"><el-input v-model="form.endorsementOrg" maxlength="100" show-word-limit placeholder="选填，如：社区服务中心" /></el-form-item>
         <el-form-item label="背书推荐语"><el-input v-model="form.endorsementText" type="textarea" :rows="2" maxlength="500" show-word-limit placeholder="选填，说明背书单位与站点的关系或推荐理由" /></el-form-item>
         <el-form-item label="站点管理员">
+          <el-alert v-if="ownerId" type="info" :closable="false" show-icon style="margin-bottom: 10px"
+            :title="`本站主管理员：${ownerNickname || '用户 #' + ownerId}，不可在此名单中移除`" />
           <el-select v-model="managerIds" multiple filterable collapse-tags collapse-tags-tooltip :max-collapse-tags="3"
-            placeholder="搜索并添加用户，可多选" style="width: 100%">
-            <el-option v-for="u in users" :key="u.id" :label="`${u.nickname || u.username}（#${u.id}）`" :value="u.id" />
+            placeholder="搜索并添加用户，可多选" style="width: 100%" @remove-tag="onRemoveTag">
+            <el-option v-for="u in users" :key="u.id"
+              :label="`${u.nickname || u.username}（#${u.id}）${u.id === ownerId ? ' · 主管理员' : ''}`" :value="u.id" />
           </el-select>
-          <p class="form-hint">全量覆盖保存：移除标签即取消该用户的站点管理员权限，新增管理员会收到站内通知。</p>
+          <p class="form-hint">全量覆盖保存：移除标签即取消该用户的共同管理员权限，新增管理员会收到站内通知；主管理员需先在小程序端转让后才能变更。</p>
         </el-form-item>
       </el-form>
       <template #footer>

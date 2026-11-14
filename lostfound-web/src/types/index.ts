@@ -149,6 +149,8 @@ export interface FoundSite {
   endorsementText?: string
   endorsementUpdatedAt?: string
   endorsementUpdatedBy?: number
+  /** 主管理员用户ID；每站唯一，由建站审核通过或超管指定产生 */
+  ownerUserId?: number
   createTime: string
 }
 
@@ -212,6 +214,8 @@ export interface SiteManager {
   id: number
   userId: number
   nickname: string
+  /** 后端 managers() 派生：是否为主管理员 */
+  isOwner?: boolean
 }
 
 /* ---------------- 招领站管理 ---------------- */

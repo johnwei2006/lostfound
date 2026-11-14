@@ -42,6 +42,35 @@
       </view>
     </view>
 
+    <!-- 招领站服务：申请、审核进度、站点管理与邀请码加入 -->
+    <view class="menu lf-card" v-if="user">
+      <view class="lf-group-title" style="margin: 24rpx 0 4rpx">招领站服务</view>
+      <view class="menu-item" @tap="go('/pages/site-apply/site-apply')">
+        <text>申请创建招领站</text>
+        <text class="arrow">›</text>
+      </view>
+      <view class="menu-item" @tap="go('/pages/site-applications/site-applications')">
+        <text>我的建站申请</text>
+        <text class="arrow">›</text>
+      </view>
+      <view class="menu-item" v-if="isSiteManager" @tap="go('/pages/manage/index')">
+        <text>招领站管理</text>
+        <text
+          v-if="siteCount"
+          style="margin-left: auto; margin-right: 12rpx; padding: 2rpx 14rpx; border-radius: 999rpx; background: #eaf1fe; color: #2563eb; font-size: 22rpx"
+        >{{ siteCount }}</text>
+        <text class="arrow">›</text>
+      </view>
+      <view class="menu-item" @tap="go('/pages/manage/invite-accept')">
+        <text>邀请码加入站点</text>
+        <text class="arrow">›</text>
+      </view>
+    </view>
+    <view class="menu lf-card" v-else @tap="goLogin">
+      <view class="lf-group-title" style="margin: 24rpx 0 8rpx">招领站服务</view>
+      <view class="menu-item lf-muted">登录后即可申请创建招领站、加入站点管理</view>
+    </view>
+
     <view style="text-align: center; margin-top: 30rpx" class="lf-muted">
       百觅 · SpringBoot + Vue3 重构版
     </view>
@@ -68,17 +97,38 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import { authApi } from '@/utils/api'
+import siteStore from '@/utils/site-store'
 
 const user = ref(null)
 const showProfile = ref(false)
 const saving = ref(false)
 const profileForm = reactive({ nickname: '', contact: '' })
 
-onShow(() => {
+const meInfo = ref(null)
+let meLoadedAt = 0
+const isSiteManager = computed(() =>
+  !!(meInfo.value?.siteManager || (meInfo.value?.managedSiteIds || []).length))
+const siteCount = computed(() => (meInfo.value?.managedSiteIds || []).length)
+const go = (url) => uni.navigateTo({ url })
+
+onShow(async () => {
   user.value = uni.getStorageSync('lf_user') || null
+  if (!user.value) {
+    meInfo.value = null
+    siteStore.reset()
+    return
+  }
+  // 切 tab 会频繁触发，60 秒内复用 /me 结果；审核通过后回到本页会重新拉取
+  if (meInfo.value && Date.now() - meLoadedAt < 60_000) return
+  try {
+    meInfo.value = await authApi.me()
+    meLoadedAt = Date.now()
+  } catch (e) {
+    console.warn('[mine] 获取站点管理范围失败', e)
+  }
 })
 onPullDownRefresh(() => {
   uni.stopPullDownRefresh()
@@ -92,6 +142,8 @@ const logout = () => {
       if (!res.confirm) return
       uni.removeStorageSync('lf_token')
       uni.removeStorageSync('lf_user')
+      siteStore.reset()
+      meInfo.value = null
       user.value = null
       uni.showToast({ title: '已退出', icon: 'none' })
     },

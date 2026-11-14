@@ -62,6 +62,12 @@ lostfound:
     ticket-ttl-seconds: ${QR_TICKET_TTL:300}
     max-tickets: ${QR_MAX_TICKETS:2000}
     rate-limit-per-minute: ${QR_RATE_LIMIT:10}
+  site-invite:
+    # 邀请码有效期；小程序码生成失败时前端自动降级为纯文本邀请码
+    ttl-hours: ${SITE_INVITE_TTL_HOURS:24}
+    page: ${WX_SITE_INVITE_PAGE:pages/manage/invite-accept}
+    # 小程序新页面发布后使用 release；体验版联调可设为 trial
+    env-version: ${WX_SITE_INVITE_ENV_VERSION:release}
 
 logging:
   level:

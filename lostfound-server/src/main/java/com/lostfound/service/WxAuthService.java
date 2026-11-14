@@ -138,14 +138,24 @@ public class WxAuthService {
      * 微信成功时返回图片二进制，失败时返回 JSON（errcode/errmsg）。
      */
     public String getMiniProgramCode(String scene) {
+        return getMiniProgramCode(scene, qrPage, qrEnvVersion);
+    }
+
+    /**
+     * 生成指定落地页/版本的小程序码，供站点管理员邀请码使用。
+     * 新页面尚未发布或微信返回 errcode 时抛 BusinessException，由上层降级为纯文本邀请码。
+     */
+    public String getMiniProgramCode(String scene, String page, String envVersion) {
         String token = getAccessToken();
         String url = WXACODE_URL + "?access_token=" + enc(token);
+        String targetPage = (page == null || page.isBlank()) ? qrPage : page;
+        String targetEnv = (envVersion == null || envVersion.isBlank()) ? qrEnvVersion : envVersion;
         Map<String, Object> payload = Map.of(
                 "scene", scene,
-                "page", qrPage,
+                "page", targetPage,
                 "width", 280,
                 "check_path", qrCheckPath,
-                "env_version", qrEnvVersion
+                "env_version", targetEnv
         );
         try {
             String body = objectMapper.writeValueAsString(payload);

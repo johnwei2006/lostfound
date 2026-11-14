@@ -27,6 +27,8 @@ public class FoundSite {
     private String endorsementText;
     private LocalDateTime endorsementUpdatedAt;
     private Long endorsementUpdatedBy;
+    /** 主管理员用户ID；必须同时存在于 foundsite_manager（迁移 verify 会校验） */
+    private Long ownerUserId;
     @TableLogic
     private Integer deleted;
     private LocalDateTime createTime;

@@ -8,11 +8,13 @@ import com.lostfound.common.PageResult;
 import com.lostfound.dto.SiteApplicationDTO;
 import com.lostfound.dto.SiteApplicationReviewDTO;
 import com.lostfound.dto.SiteDTO;
+import com.lostfound.entity.FoundSite;
 import com.lostfound.entity.FoundSiteManager;
 import com.lostfound.entity.Message;
 import com.lostfound.entity.SiteApplication;
 import com.lostfound.entity.User;
 import com.lostfound.mapper.FoundSiteManagerMapper;
+import com.lostfound.mapper.FoundSiteMapper;
 import com.lostfound.mapper.SiteApplicationMapper;
 import com.lostfound.mapper.UserMapper;
 import com.lostfound.vo.SiteApplicationVO;
@@ -43,6 +45,7 @@ public class SiteApplicationService {
     private final UserMapper userMapper;
     private final FoundSiteManagerMapper foundSiteManagerMapper;
     private final FoundSiteService foundSiteService;
+    private final FoundSiteMapper foundSiteMapper;
     private final MessageService messageService;
 
     @Transactional
@@ -149,6 +152,12 @@ public class SiteApplicationService {
         BeanUtils.copyProperties(app, siteDTO);
         Long siteId = foundSiteService.create(siteDTO);
 
+        // 主管理员身份写 foundsite 单列，保证每站唯一；与管理员关系行在同一事务内提交
+        FoundSite ownerSite = new FoundSite();
+        ownerSite.setId(siteId);
+        ownerSite.setOwnerUserId(app.getApplicantUserId());
+        foundSiteMapper.updateById(ownerSite);
+
         FoundSiteManager manager = new FoundSiteManager();
         manager.setSiteId(siteId);
         manager.setUserId(app.getApplicantUserId());
@@ -160,7 +169,7 @@ public class SiteApplicationService {
                 .set("created_site_id", siteId));
 
         messageService.send(app.getApplicantUserId(), "建站申请已通过",
-                "您申请的「" + app.getName() + "」招领站已创建，现已开通站点管理权限。",
+                "您申请的「" + app.getName() + "」招领站已创建，您已成为该站主管理员，可邀请共同管理员。",
                 Message.TYPE_SITE, siteId);
         log.warn("建站申请通过 applicationId={} siteId={} applicantId={} reviewerId={}",
                 id, siteId, app.getApplicantUserId(), reviewerId);

@@ -10,7 +10,15 @@
     { "path": "pages/map/map", "style": { "navigationBarTitleText": "地图寻物" } },
     { "path": "pages/sites/sites", "style": { "navigationBarTitleText": "招领站" } },
     { "path": "pages/transfer/transfer", "style": { "navigationBarTitleText": "我的转交" } },
-    { "path": "pages/web-login/web-login", "style": { "navigationBarTitleText": "确认登录网页" } }
+    { "path": "pages/web-login/web-login", "style": { "navigationBarTitleText": "确认登录网页" } },
+    { "path": "pages/site-apply/site-apply", "style": { "navigationBarTitleText": "申请创建招领站" } },
+    { "path": "pages/site-applications/site-applications", "style": { "navigationBarTitleText": "我的建站申请" } },
+    { "path": "pages/manage/index", "style": { "navigationBarTitleText": "招领站管理" } },
+    { "path": "pages/manage/managers", "style": { "navigationBarTitleText": "管理员管理" } },
+    { "path": "pages/manage/manager-detail", "style": { "navigationBarTitleText": "管理员详情" } },
+    { "path": "pages/manage/invite", "style": { "navigationBarTitleText": "邀请共同管理员" } },
+    { "path": "pages/manage/invite-accept", "style": { "navigationBarTitleText": "加入招领站" } },
+    { "path": "pages/manage/transfer", "style": { "navigationBarTitleText": "转让主管理员" } }
   ],
   "globalStyle": {
     "navigationBarBackgroundColor": "#2563EB",

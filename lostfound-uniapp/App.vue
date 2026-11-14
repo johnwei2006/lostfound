@@ -60,4 +60,52 @@ page {
   padding: 120rpx 0;
   font-size: 26rpx;
 }
+
+/* 招领站申请与站点管理页复用组件 */
+.lf-group-title {
+  padding-left: 16rpx;
+  border-left: 6rpx solid #2563eb;
+  color: #94a3b8;
+  font-size: 23rpx;
+  letter-spacing: 2rpx;
+  line-height: 1.4;
+}
+.lf-tag--owner { background: #fff7e6; color: #b45309; }
+.lf-tag--pending { background: #eaf1fe; color: #2563eb; }
+.lf-tag--approved { background: #e7f8f1; color: #10b981; }
+.lf-tag--rejected { background: #feecec; color: #dc2626; }
+.lf-tag--muted { background: #f3f4f6; color: #94a3b8; }
+.lf-btn--danger { background: #dc2626; }
+.lf-btn--ghost { background: #fff; color: #475569; border: 2rpx solid #e2e8f0; }
+.lf-btn--busy { opacity: .6; }
+.lf-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  padding: 20rpx 0;
+  border-bottom: 2rpx solid #f1f5f9;
+}
+.lf-field:last-child { border-bottom: none; }
+.lf-field__label { width: 170rpx; flex-shrink: 0; color: #64748b; font-size: 26rpx; }
+.lf-field__value { flex: 1; color: #1f2937; font-size: 27rpx; word-break: break-all; }
+.lf-input {
+  width: 100%;
+  padding: 18rpx 20rpx;
+  border: 2rpx solid #e2e8f0;
+  border-radius: 14rpx;
+  background: #f8fafc;
+  font-size: 27rpx;
+  color: #1f2937;
+  box-sizing: border-box;
+}
+.lf-primary-btn {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: #fff;
+  border-radius: 999rpx;
+  font-size: 30rpx;
+  text-align: center;
+  padding: 24rpx 0;
+  box-shadow: 0 8rpx 24rpx rgba(37, 99, 235, .22);
+}
+.lf-stat-num { font-size: 44rpx; font-weight: 700; color: #1d4ed8; }
 </style>

@@ -11,6 +11,7 @@ import SiteEndorsementCard from '@/components/SiteEndorsementCard.vue'
 const siteStore = useSiteStore()
 const siteId = computed(() => siteStore.currentSiteId)
 const site = ref<FoundSite | null>(null)
+const ownerName = ref('')
 const form = ref<SiteEndorsementPayload>({ endorsementOrg: '', endorsementText: '' })
 const loading = ref(false)
 const saving = ref(false)
@@ -23,10 +24,17 @@ const load = async () => {
   loading.value = true
   error.value = ''
   try {
-    site.value = await siteApi.detail(siteId.value)
+    const [detail, managers] = await Promise.all([
+      siteApi.detail(siteId.value),
+      siteApi.managers(siteId.value),
+    ])
+    site.value = detail
+    const owner = managers.find((m) => m.isOwner)
+    ownerName.value = owner?.nickname
+      || (detail.ownerUserId ? `用户 #${detail.ownerUserId}` : '尚未指定')
     form.value = {
-      endorsementOrg: site.value.endorsementOrg || '',
-      endorsementText: site.value.endorsementText || '',
+      endorsementOrg: detail.endorsementOrg || '',
+      endorsementText: detail.endorsementText || '',
     }
   } catch (e) {
     error.value = errMsg(e, '站点资料加载失败')
@@ -77,6 +85,7 @@ const save = async () => {
         <dl class="site-grid">
           <div><dt>站点名称</dt><dd>{{ site.name }}</dd></div>
           <div><dt>站点地址</dt><dd>{{ site.address }}</dd></div>
+          <div><dt>主管理员</dt><dd>{{ ownerName || '尚未指定' }}</dd></div>
           <div><dt>联系电话</dt><dd>{{ site.phone || '未填写' }}</dd></div>
           <div><dt>开放时间</dt><dd>{{ site.openTime || '全天开放' }}</dd></div>
           <div class="wide"><dt>站点简介</dt><dd>{{ site.description || '未填写' }}</dd></div>

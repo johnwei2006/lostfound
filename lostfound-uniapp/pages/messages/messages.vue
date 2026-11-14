@@ -77,6 +77,8 @@ const open = async (m) => {
     uni.navigateTo({ url: '/pages/list/list?mode=match' })
   } else if (m.type === 'TRANSFER') {
     uni.navigateTo({ url: '/pages/transfer/transfer' })
+  } else if (m.type === 'SITE') {
+    uni.navigateTo({ url: '/pages/manage/index' })
   }
 }
 const readAll = async () => {
@@ -84,8 +86,13 @@ const readAll = async () => {
   load()
 }
 
-const labelOf = (t) => ({ MATCH: '匹配', CLAIM: '认领', TRANSFER: '转交', SYSTEM: '系统' }[t] || '通知')
-const colorOf = (t) => ({ MATCH: '#2563eb', CLAIM: '#f97316', TRANSFER: '#16a34a', SYSTEM: '#6b7280' }[t] || '#6b7280')
+const labelOf = (t) => ({
+  MATCH: '匹配', CLAIM: '认领', TRANSFER: '转交', RETURN: '归还', SITE: '站点', SYSTEM: '系统',
+}[t] || '通知')
+const colorOf = (t) => ({
+  MATCH: '#2563eb', CLAIM: '#f97316', TRANSFER: '#16a34a', RETURN: '#0ea5e9',
+  SITE: '#7c3aed', SYSTEM: '#6b7280',
+}[t] || '#6b7280')
 
 onShow(load)
 onPullDownRefresh(load)

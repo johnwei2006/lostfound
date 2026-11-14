@@ -46,6 +46,27 @@ public class SitePermissionService {
         throw new BusinessException(403, "无权管理该招领站，请联系管理员");
     }
 
+    /** 指定用户是否为该站主管理员（不含全局 ADMIN 语义） */
+    public boolean isOwner(Long userId, Long siteId) {
+        if (userId == null || siteId == null) return false;
+        FoundSite site = foundSiteMapper.selectById(siteId);
+        return site != null && Objects.equals(site.getOwnerUserId(), userId);
+    }
+
+    /**
+     * 仅主管理员或全局 ADMIN 可执行：生成/撤销邀请码、移除共同管理员、转让主管理员。
+     * 共同管理员仍可通过 requireManager 管理物品、审批与归还。
+     */
+    public void requireOwner(Long siteId) {
+        Long userId = UserContext.getUserId();
+        if (userId == null) throw new BusinessException(401, "请先登录");
+        if (siteId == null) throw new BusinessException(400, "缺少招领站ID");
+        if (UserContext.isAdmin()) return;
+        if (!isOwner(userId, siteId)) {
+            throw new BusinessException(403, "仅招领站主管理员可执行此操作");
+        }
+    }
+
     /** 我可管理的站点 ID；全局 ADMIN 返回全部站点 */
     public List<Long> mySiteIds(Long userId) {
         if (userId == null) return List.of();

@@ -45,6 +45,34 @@ export const focusApi = {
 /* ---------------- 招领站 ---------------- */
 export const siteApi = {
   page: (query) => request({ url: '/api/foundsite/page', data: query }),
+  /** 我可管理的站点；返回项含 ownerUserId，用于判断主/共同管理员身份 */
+  mine: () => request({ url: '/api/foundsite/mine' }),
+  /** 站点概览统计（后端按 requireManager 校验站点权限） */
+  stats: (siteId) => request({ url: `/api/foundsite/${siteId}/stats` }),
+}
+
+/* ---------------- 建站申请 ---------------- */
+export const siteApplicationApi = {
+  submit: (data) => request({ url: '/api/site-applications', method: 'POST', data }),
+  mine: () => request({ url: '/api/site-applications/mine' }),
+  withdraw: (id) => request({ url: `/api/site-applications/${id}`, method: 'DELETE' }),
+}
+
+/* ---------------- 站点主/共同管理员 ---------------- */
+export const siteManagerApi = {
+  managers: (siteId) => request({ url: `/api/site-managers/${siteId}` }),
+  detail: (siteId, userId) => request({ url: `/api/site-managers/${siteId}/members/${userId}` }),
+  invites: (siteId) => request({ url: `/api/site-managers/${siteId}/invites` }),
+  createInvite: (siteId, ttlHours = 24) =>
+    request({ url: `/api/site-managers/${siteId}/invites`, method: 'POST', data: { ttlHours } }),
+  revokeInvite: (siteId, inviteId) =>
+    request({ url: `/api/site-managers/${siteId}/invites/${inviteId}`, method: 'DELETE' }),
+  previewInvite: (code) => request({ url: '/api/site-managers/invites/preview', data: { code } }),
+  acceptInvite: (code) => request({ url: '/api/site-managers/invites/accept', method: 'POST', data: { code } }),
+  remove: (siteId, userId) =>
+    request({ url: `/api/site-managers/${siteId}/members/${userId}`, method: 'DELETE' }),
+  transfer: (siteId, targetUserId) =>
+    request({ url: `/api/site-managers/${siteId}/transfer`, method: 'POST', data: { targetUserId } }),
 }
 
 /* ---------------- 站点转交 ---------------- */

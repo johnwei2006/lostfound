@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS `foundsite` (
     `endorsement_text`       VARCHAR(500) DEFAULT NULL COMMENT '自定义背书推荐语',
     `endorsement_updated_at` DATETIME     DEFAULT NULL COMMENT '背书更新时间',
     `endorsement_updated_by` BIGINT       DEFAULT NULL COMMENT '背书更新人ID',
+    `owner_user_id` BIGINT      DEFAULT NULL COMMENT '主管理员用户ID',
     `deleted`     TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',
     `create_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -146,6 +147,24 @@ CREATE TABLE IF NOT EXISTS `foundsite_manager` (
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_site_user` (`site_id`, `user_id`)
 ) ENGINE = InnoDB COMMENT ='招领站管理员表';
+
+-- ---------------------------------------------------------------------
+-- 招领站管理员邀请码（主管理员生成，被邀请人确认后一次性消费）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `foundsite_manager_invite` (
+    `id`              BIGINT      NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `site_id`         BIGINT      NOT NULL COMMENT '招领站ID',
+    `code`            VARCHAR(32) NOT NULL COMMENT '邀请码',
+    `inviter_user_id` BIGINT      NOT NULL COMMENT '邀请人（主管理员）用户ID',
+    `status`          VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/USED/REVOKED/EXPIRED',
+    `expire_time`     DATETIME    NOT NULL COMMENT '过期时间',
+    `used_by_user_id` BIGINT      DEFAULT NULL COMMENT '使用人用户ID',
+    `used_time`       DATETIME    DEFAULT NULL COMMENT '使用时间',
+    `create_time`     DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_code` (`code`),
+    KEY `idx_site_status` (`site_id`, `status`)
+) ENGINE = InnoDB COMMENT ='招领站管理员邀请码';
 
 -- ---------------------------------------------------------------------
 -- 招领站建站申请表（注册用户申请 -> 平台 ADMIN 审核 -> 自动建站并绑定管理员）

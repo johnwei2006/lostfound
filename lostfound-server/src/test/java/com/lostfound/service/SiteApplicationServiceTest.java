@@ -91,6 +91,8 @@ class SiteApplicationServiceTest {
 
         assertEquals(88L, siteId);
         verify(foundSiteService).create(any(SiteDTO.class));
+        verify(foundSiteMapper).updateById(argThat((FoundSite s) ->
+                Long.valueOf(88L).equals(s.getId()) && Long.valueOf(7L).equals(s.getOwnerUserId())));
         verify(foundSiteManagerMapper).insert(argThat((FoundSiteManager m) ->
                 Long.valueOf(88L).equals(m.getSiteId()) && Long.valueOf(7L).equals(m.getUserId())));
         verify(messageService).send(eq(7L), contains("已通过"), anyString(),
