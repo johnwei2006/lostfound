@@ -126,4 +126,30 @@ textarea.lf-input {
   box-shadow: 0 8rpx 24rpx rgba(37, 99, 235, .22);
 }
 .lf-stat-num { font-size: 44rpx; font-weight: 700; color: #1d4ed8; }
+
+/* 站点日常管理页通用 */
+.mng-page { padding: 20rpx 20rpx 48rpx; }
+.mng-head { background: linear-gradient(135deg, #eff6ff, #ffffff); border-radius: 20rpx; padding: 24rpx; margin-bottom: 20rpx; }
+.mng-head__site { color: #1e3a8a; font-size: 30rpx; font-weight: 700; }
+.mng-head__desc { display: block; margin-top: 8rpx; color: #64748b; font-size: 23rpx; line-height: 1.6; }
+.mng-filters { display: flex; flex-wrap: wrap; gap: 12rpx; margin-bottom: 18rpx; }
+.mng-search { flex: 1; min-width: 260rpx; }
+.mng-chip { padding: 12rpx 22rpx; border-radius: 999rpx; background: #fff; color: #64748b; font-size: 24rpx; border: 2rpx solid #e2e8f0; }
+.mng-chip--on { background: #2563eb; color: #fff; border-color: #2563eb; }
+.mng-card { background: #fff; border-radius: 20rpx; padding: 24rpx; margin-bottom: 16rpx; box-shadow: 0 2rpx 12rpx rgba(31, 41, 55, .05); }
+.mng-card__top { display: flex; align-items: flex-start; gap: 14rpx; }
+.mng-card__main { flex: 1; min-width: 0; }
+.mng-card__title { display: block; font-size: 29rpx; font-weight: 600; color: #1f2937; }
+.mng-card__meta { display: block; margin-top: 8rpx; color: #94a3b8; font-size: 22rpx; line-height: 1.6; }
+.mng-card__body { margin-top: 16rpx; color: #64748b; font-size: 25rpx; line-height: 1.7; }
+.mng-card__ops { display: flex; justify-content: flex-end; gap: 14rpx; margin-top: 18rpx; padding-top: 18rpx; border-top: 2rpx solid #f1f5f9; }
+.mng-btn { margin: 0; padding: 12rpx 30rpx; font-size: 25rpx; line-height: 1.5; border-radius: 999rpx; }
+.mng-btn::after { border: none; }
+.mng-btn--primary { background: #2563eb; color: #fff; }
+.mng-btn--danger { background: #fff; color: #dc2626; border: 2rpx solid #fecaca; }
+.mng-btn--ghost { background: #f1f5f9; color: #475569; }
+.mng-btn--busy { opacity: .6; }
+.mng-foot { text-align: center; color: #94a3b8; font-size: 22rpx; padding: 24rpx 0; }
+.mng-fab { position: fixed; right: 32rpx; bottom: 48rpx; z-index: 12; padding: 20rpx 34rpx; border-radius: 999rpx; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #fff; font-size: 27rpx; box-shadow: 0 10rpx 26rpx rgba(37, 99, 235, .3); }
+.mng-fab:active { opacity: .85; }
 </style>

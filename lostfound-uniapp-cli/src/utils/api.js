@@ -19,14 +19,18 @@ export const itemApi = {
   publish: (type, data) => request({ url: `/api/${type}`, method: 'POST', data }),
   mine: (type, page = 1, size = 10) => request({ url: `/api/${type}/mine`, data: { page, size } }),
   mapItems: (type, limit = 200) => request({ url: `/api/${type}/map`, data: { limit } }),
+  /** 上架/下架：后端为 @RequestParam，参数走 query 而非 JSON body */
+  changeStatus: (type, id, status) =>
+    request({ url: `/api/${type}/${id}/status?status=${encodeURIComponent(status)}`, method: 'PUT' }),
 }
 
 /* ---------------- 认领 ---------------- */
 export const claimApi = {
   submit: (type, itemId, data) => request({ url: `/api/${type}/${itemId}/claim`, method: 'POST', data }),
   listByItem: (type, itemId) => request({ url: `/api/${type}/${itemId}/claims` }),
+  /** 审批认领申请：后端为 @RequestParam approve，参数走 query */
   review: (type, claimId, approve) =>
-    request({ url: `/api/${type}/claims/${claimId}/review`, method: 'PUT', data: { approve } }),
+    request({ url: `/api/${type}/claims/${claimId}/review?approve=${approve ? 'true' : 'false'}`, method: 'PUT' }),
 }
 
 /* ---------------- 评论 ---------------- */
@@ -49,6 +53,24 @@ export const siteApi = {
   mine: () => request({ url: '/api/foundsite/mine' }),
   /** 站点概览统计（后端按 requireManager 校验站点权限） */
   stats: (siteId) => request({ url: `/api/foundsite/${siteId}/stats` }),
+  /** 站内物品查询：manage=true 才会返回已下架物品并校验管理员权限 */
+  items: (siteId, query = {}) =>
+    request({ url: `/api/foundsite/${siteId}/items`, data: { manage: true, ...query } }),
+  /** 站点管理员代发布，直接入库无需转交审批 */
+  publishItem: (siteId, data) =>
+    request({ url: `/api/foundsite/${siteId}/items`, method: 'POST', data }),
+  /** 站点转交队列（status / keyword / page / size） */
+  transfers: (siteId, query = {}) =>
+    request({ url: `/api/foundsite/${siteId}/transfers`, data: query }),
+  /** 站点认领申请队列（status / page / size） */
+  claims: (siteId, query = {}) =>
+    request({ url: `/api/foundsite/${siteId}/claims`, data: query }),
+  /** 归还记录（page / size） */
+  returns: (siteId, query = {}) =>
+    request({ url: `/api/foundsite/${siteId}/returns`, data: query }),
+  /** 现场登记归还 */
+  registerReturn: (siteId, data) =>
+    request({ url: `/api/foundsite/${siteId}/returns`, method: 'POST', data }),
 }
 
 /* ---------------- 建站申请 ---------------- */
@@ -84,6 +106,9 @@ export const transferApi = {
   cancelByItem: (foundId) => request({ url: `/api/found/${foundId}/transfer`, method: 'DELETE' }),
   /** 按转交单撤回（我的转交列表用） */
   cancel: (transferId) => request({ url: `/api/transfer/${transferId}/cancel`, method: 'PUT' }),
+  /** 站点管理员审批转交：@RequestBody TransferReviewDTO { approve, remark } */
+  review: (transferId, approve, remark = '') =>
+    request({ url: `/api/transfer/${transferId}/review`, method: 'PUT', data: { approve, remark } }),
 }
 
 /* ---------------- 消息 ---------------- */

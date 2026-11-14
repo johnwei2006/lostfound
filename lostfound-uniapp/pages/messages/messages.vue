@@ -1,5 +1,6 @@
 <template>
   <view class="messages">
+    <site-context-bar />
     <view class="tabs">
       <view
         v-for="t in tabs"

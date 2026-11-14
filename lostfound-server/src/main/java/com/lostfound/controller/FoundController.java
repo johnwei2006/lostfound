@@ -79,7 +79,7 @@ public class FoundController {
     @RequireLogin
     @PutMapping("/{id}/status")
     public Result<Void> changeStatus(@PathVariable Long id, @RequestParam String status) {
-        itemService.changeStatus(TYPE, id, UserContext.getUserId(), UserContext.isAdmin(), status);
+        itemService.changeShelfStatus(TYPE, id, UserContext.getUserId(), UserContext.isAdmin(), status);
         return Result.ok();
     }
 

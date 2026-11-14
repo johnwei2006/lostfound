@@ -1,5 +1,6 @@
 <template>
   <view class="login">
+    <site-context-bar />
     <view class="brand">
       <text class="brand-title">百觅</text>
       <text class="brand-sub">让每一份遗失都有归途</text>

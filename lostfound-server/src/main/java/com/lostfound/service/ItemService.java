@@ -47,6 +47,8 @@ public class ItemService {
     private final ObjectMapper objectMapper;
     private final CacheEvictService cacheEvictService;
     private final TransferService transferService;
+    /** 叶子 Bean，只依赖 Mapper，注入此处不会形成循环依赖 */
+    private final SitePermissionService sitePermission;
 
     @Value("${lostfound.review.required:false}")
     private boolean reviewRequired;
@@ -504,6 +506,38 @@ public class ItemService {
             lostMapper.updateById(l);
         }
         evictLatest();
+    }
+
+    /**
+     * 站点物品上架/下架。
+     * 与 {@link #changeStatus} 的区别：这里只接受 WAITING / OFFLINE，且额外允许「物品归属站点的管理员」
+     * 操作转交入库物品（这类物品发布者是他人，原 checkOwner 会 403）。
+     * 单独成方法是为了不影响 ClaimService 审批通过时用 changeStatus(..., "FINISHED") 的内部调用。
+     */
+    public void changeShelfStatus(String type, Long id, Long userId, boolean isAdmin, String status) {
+        if (!Found.STATUS_WAITING.equals(status) && !Found.STATUS_OFFLINE.equals(status)) {
+            throw new BusinessException(400, "仅支持上架或下架操作");
+        }
+        if ("FOUND".equals(type)) {
+            Found f = requireFound(id);
+            checkShelfOwner(f.getUserId(), f.getSiteId(), userId, isAdmin);
+            f.setStatus(status);
+            foundMapper.updateById(f);
+        } else {
+            Lost l = requireLost(id);
+            // Lost 没有 site_id，站点管理员不能跨类型操作失物
+            checkOwner(l.getUserId(), userId, isAdmin);
+            l.setStatus(status);
+            lostMapper.updateById(l);
+        }
+        evictLatest();
+    }
+
+    /** 发布者/全局 ADMIN 放行；否则仅当 FOUND 已归属某站且当前用户可管理该站时放行 */
+    private void checkShelfOwner(Long ownerId, Long siteId, Long userId, boolean isAdmin) {
+        if (Objects.equals(ownerId, userId) || isAdmin) return;
+        if (siteId != null && sitePermission.canManage(siteId)) return;
+        throw new BusinessException(403, "无权操作他人信息");
     }
 
     // ------------------------------------------------------------------

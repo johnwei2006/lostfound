@@ -1,12 +1,6 @@
 <template>
   <view class="workbench">
-    <site-switcher
-      :site="site"
-      :sites="sites"
-      :current-id="site ? site.id : null"
-      :owner="owner"
-      @change="onSwitch"
-    />
+    <site-context-bar />
 
     <view v-if="error" class="lf-card error-card" @tap="load">
       <text class="lf-muted">{{ error }}</text>
@@ -20,7 +14,7 @@
         <text class="banner__desc">
           {{ owner
             ? '可邀请共同管理员、移除共同管理员，或把主管理员身份转让给本站其它管理员。'
-            : '可查看管理员与站点概览；邀请、移除与转让需由主管理员操作。物品、审批与归还管理请前往网页版后台。' }}
+            : '可查看管理员与站点概览；邀请、移除与转让需由主管理员操作。物品、审批与归还管理可在小程序完成。' }}
         </text>
       </view>
 
@@ -32,7 +26,43 @@
             <text class="stat__label">{{ s.label }}</text>
           </view>
         </view>
-        <text class="stats-hint lf-muted">物品清单、转交与认领审批、归还登记、站点资料请在网页版后台操作</text>
+        <text class="stats-hint lf-muted">下方入口可直接管理本站物品、审批与归还</text>
+      </view>
+
+      <view class="lf-card">
+        <text class="lf-group-title">站点日常管理</text>
+        <view class="entry" @tap="go('/pages/manage/transfers')">
+          <view class="entry__icon entry__icon--blue">收</view>
+          <view class="entry__body">
+            <text class="entry__title">接收转交物品</text>
+            <text class="lf-muted">待办与已处理查询、同意或驳回</text>
+          </view>
+          <text class="entry__arrow">›</text>
+        </view>
+        <view class="entry" @tap="go('/pages/manage/items')">
+          <view class="entry__icon entry__icon--orange">物</view>
+          <view class="entry__body">
+            <text class="entry__title">物品上下架与代发布</text>
+            <text class="lf-muted">按关键词、状态、来源查询</text>
+          </view>
+          <text class="entry__arrow">›</text>
+        </view>
+        <view class="entry" @tap="go('/pages/manage/claims')">
+          <view class="entry__icon entry__icon--green">审</view>
+          <view class="entry__body">
+            <text class="entry__title">认领申请审批</text>
+            <text class="lf-muted">通过或驳回本站物品认领</text>
+          </view>
+          <text class="entry__arrow">›</text>
+        </view>
+        <view class="entry" @tap="go('/pages/manage/returns')">
+          <view class="entry__icon entry__icon--blue">还</view>
+          <view class="entry__body">
+            <text class="entry__title">现场登记归还</text>
+            <text class="lf-muted">登记领取人并查询归还记录</text>
+          </view>
+          <text class="entry__arrow">›</text>
+        </view>
       </view>
 
       <view class="lf-card">
@@ -98,13 +128,11 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import { siteApi } from '@/utils/api'
-import siteStore from '@/utils/site-store'
-import SiteSwitcher from '@/components/site-switcher/site-switcher.vue'
+import siteStore, { CONTEXT_CHANGE_EVENT } from '@/utils/site-store'
 
-const sites = ref([])
 const site = ref(null)
 const owner = ref(false)
 const stats = ref(null)
@@ -135,7 +163,6 @@ const load = async () => {
       siteStore.select(pendingSelect)
     }
     pendingSelect = null
-    sites.value = siteStore.sites
     site.value = siteStore.currentSite
     owner.value = siteStore.isOwner()
     // 切换站点时先清空上一站点的统计，避免短暂显示脏数据
@@ -149,12 +176,17 @@ const load = async () => {
   }
 }
 
-const onSwitch = (id) => {
-  siteStore.select(id)
-  load()
-}
 const go = (url) => uni.navigateTo({ url })
 const goHome = () => uni.switchTab({ url: '/pages/home/home' })
+
+// 顶部站点条切换当前站点后刷新概览，避免显示上一站点数据
+const onContextChange = () => load()
+onMounted(() => {
+  if (typeof uni.$on === 'function') uni.$on(CONTEXT_CHANGE_EVENT, onContextChange)
+})
+onUnmounted(() => {
+  if (typeof uni.$off === 'function') uni.$off(CONTEXT_CHANGE_EVENT, onContextChange)
+})
 
 onShow(load)
 onPullDownRefresh(load)

@@ -1,5 +1,6 @@
 <template>
   <view class="transfer">
+    <site-context-bar />
     <view class="warn lf-card">
       <text class="warn__title">转让主管理员身份</text>
       <text class="warn__desc">转让后您将变为本站共同管理员，不再拥有邀请共同管理员、移除管理员与再次转让的权限。每个站点始终只有一位主管理员。</text>

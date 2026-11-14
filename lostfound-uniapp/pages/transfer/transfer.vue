@@ -1,5 +1,6 @@
 <template>
   <view class="transfer-page">
+    <site-context-bar />
     <view v-for="t in list" :key="t.id" class="lf-card">
       <view class="head">
         <text class="lf-tag" :class="statusCls(t.status)">{{ statusText(t.status) }}</text>

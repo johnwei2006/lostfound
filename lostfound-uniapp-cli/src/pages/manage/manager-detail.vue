@@ -1,5 +1,6 @@
 <template>
   <view class="detail">
+    <site-context-bar />
     <view v-if="error" class="lf-card" @tap="load"><text class="lf-muted">{{ error }} · 点击重试</text></view>
     <view v-else-if="!manager" class="lf-empty">加载中…</view>
 

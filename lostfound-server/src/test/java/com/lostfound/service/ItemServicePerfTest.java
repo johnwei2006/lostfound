@@ -48,6 +48,7 @@ class ItemServicePerfTest {
     @Mock private CacheEvictService cacheEvictService;
     @Mock private TransferService transferService;
     @Mock private ItemCountCache itemCountCache;
+    @Mock private SitePermissionService sitePermission;
 
     @InjectMocks private ItemService service;
 

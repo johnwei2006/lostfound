@@ -1,5 +1,6 @@
 <template>
   <view class="map-page">
+    <site-context-bar />
     <view class="tabs">
       <view class="tab" :class="{ active: mode === 'found' }" @tap="switchMode('found')">拾物</view>
       <view class="tab" :class="{ active: mode === 'lost' }" @tap="switchMode('lost')">失物</view>

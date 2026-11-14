@@ -1,5 +1,6 @@
 <template>
   <view class="accept">
+    <site-context-bar />
     <view class="accept__card lf-card">
       <view class="accept__icon">邀</view>
       <text class="accept__title">加入招领站</text>

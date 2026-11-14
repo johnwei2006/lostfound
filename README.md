@@ -82,7 +82,7 @@
 - **转让**：目标必须是本站现有共同管理员；带旧 owner 值的条件更新避免并发双主，原主保留管理员行并降为共同管理员，双方收到 `SITE` 站内消息。
 - **多站点与数据隔离**：`utils/site-store.js` 保存 `sites / currentSiteId`，按 `userId` 隔离持久化、登出清空；顶部站点切换器常驻所有管理页，切换后立即清空并重载本页数据，所有请求显式带 `siteId`，后端 `requireManager` / `requireOwner` 兜底。一人可管理多个已通过站点。
 - **Web 同步**：`FoundSiteService.setManagers()` 全量覆盖时保留主管理员关系行并强制把 owner 补回名单，`owner_user_id` 为空的历史站点把名单首位指定为主管理员；`/admin/sites` 主管理员标签不可移除并提示先转让，`/manage/site` 展示主管理员。公开接口 `GET /api/foundsite/{id}/managers` 仅追加 `isOwner`，原有 `id/userId/nickname` 契约不变。
-- **本轮小程序范围**：申请与进度、多站点切换、站点概览、管理员列表/详情/邀请/移除/转让、邀请确认；站点物品、转交与认领审批、归还管理、站点资料仍在 Web `/manage`。
+- **小程序范围（2026-11-15 起）**：申请与进度、多站点切换、站点概览、管理员列表/详情/邀请/移除/转让、邀请确认，以及站点物品上下架与代发布、转交接收、认领审批、现场归还登记与各自查询；站点资料维护、背书文案仍在 Web `/manage`。
 
 新接口统一挂 `/api/site-managers`（全部 `@RequireLogin`）：`GET /{siteId}` 列表、`GET /{siteId}/members/{userId}` 详情、`POST|GET /{siteId}/invites`、`DELETE /{siteId}/invites/{inviteId}`、`GET /invites/preview`、`POST /invites/accept`、`DELETE /{siteId}/members/{userId}`、`POST /{siteId}/transfer`。管理员详情不返回 `openid` / 手机号，联系方式脱敏；日志只打印邀请码前 3 位。写操作在 Service 层用 `requireOwner` 校验，前端隐藏只是体验。
 
@@ -251,4 +251,16 @@ npm run dev
 - **缓存**：Caffeine 单机，`latestItems` 300 秒、`itemCount` 30 秒、`siteStats` / `adminOverview` 60 秒；写操作经 `CacheEvictService.evictLatest()` / `evictAll()` 主动失效。统计缓存用手写方式而非 `@Cacheable`，保证权限校验不被缓存命中绕过。
 - **前端请求治理**：Web axios 层对相同 GET 自动 abort 旧在飞请求，`src/utils/request-cache.ts` 提供短 TTL 去重；小程序 `utils/request.js` 保留 `requestTask` 并支持 `abort()` / `onTask`，`utils/request-cache.js` 供 `onShow` / tab 切换去重。页面外观、接口入参与返回结构均未改变。
 - **索引与迁移**：`src/main/resources/sql/migration-perf-index.sql` 为人工等价版本（存储过程按 `information_schema.STATISTICS` 幂等判断，MySQL 5.6 兼容，无 CHECK / 生成列 / 函数索引）；生产上线以 `dbtool/perf-index-migrate.js` 的 `survey / dry-run / apply / verify / rollback` 为准，只 `ADD INDEX`、不删既有索引、DDL 前建全表快照。
+
+## 小程序站点管理员工作视图（2026-11-15）
+
+站点管理员可在「普通用户 / 站点管理员」间双向切换，切回普通用户后全部原有功能与页面外观完整恢复。
+
+- **身份态**：`utils/view-mode.js` 用 `lf_view_mode` 单键存 `{userId, mode}`，读取时校验用户 id、登出清除，默认 `personal`；与 Web `stores/user.ts` 的 `ViewMode` 语义一致。入口在「我的」页（仅 `isSiteManager` 可见）。
+- **全站站点名条**：`components/site-context-bar/` 按 easycom 在全部 23 个页面模板顶部引入，管理员身份下常驻「当前站点：XXX」+ 主管理员/共同管理员标签 + 切换入口；复用 `components/site-switcher/` 的 `variant="bar"`，弹层与 `change` 事件契约不变。普通用户身份整条不渲染。`utils/site-store.js` 的模块内 in-flight guard 保证多页面同时挂载只发一次 `/api/foundsite/mine`，身份或站点切换通过 `lf:context-changed` 广播让各页清空旧数据并增量刷新，避免串数据。
+- **管理员视图**：首页变本站工作台（一次 `siteApi.stats` + 一次最近物品，统计卡、四类快捷入口、上下架操作），隐藏公共信息流与地图/附近入口；发布 tab 变本站代发布（`POST /api/foundsite/{id}/items`），复用原表单与选点逻辑；通知与我的功能不变；**底部导航 4 项完全不变**。
+- **四类日常管理**：`pages/manage/{items,transfers,claims,returns}.vue` 复用既有后端接口，共用 `utils/use-site-list.js` 做站点上下文、分页（size=20）、在飞竞态防护与切换刷新。转交接收支持待办/已处理查询与同意/驳回备注；物品管理支持关键词/状态/分类筛选与上下架、代发布入口；认领审批支持状态筛选与通过/驳回；现场归还支持物品选择、领取人校验、凭证上传、二次确认与归还记录分页（领取人姓名/电话脱敏）。
+- **后端唯一改动**：`ItemService.changeShelfStatus()` 只接受 `WAITING` / `OFFLINE`，在 `checkOwner` 之外允许「物品 `site_id` 非空且当前用户可管理该站」操作转交入库物品（发布者是他人，原逻辑会 403）；`Lost` 无 `site_id`，站点管理员不能跨类型操作失物。独立成方法以保留 `ClaimService.review()` 内部 `changeStatus(..., "FINISHED")` 的原语义。单测 `ItemStatusPermissionTest` 覆盖本人物品 / 本站他人转交物品 / 其它站物品 / 普通用户 / ADMIN / 非法状态 / 缓存失效。
+- **距离排序**：`utils/distance.js` 前端本地 Haversine（坐标同为 gcj02，不换算），`sortByDistance` 升序且无坐标站点稳定排末尾、`formatDistance` 输出「距您 X km」；「附近招领站」与列表页「选择转交目标站点」共用，**不改 `/api/foundsite/page` 契约、不给 `SiteVO` 加字段**（线上站点 21 个，`size:50` 一次取全量）。定位不可用或坐标缺失时降级为原 `create_time` 倒序且不显示距离；位置变化经 `subscribeLocation` 即时重排。
+- **双源码同步**：`lostfound-uniapp/` 与 `lostfound-uniapp-cli/src/` 逐一同步（排除根级 `project*.json`），再 `npm run build:mp-weixin`（Node 22），`dist/build/mp-weixin` 强同步到 `dist/dev/mp-weixin` 并逐文件 SHA256 校验，保留 `project.private.config.json`。
 

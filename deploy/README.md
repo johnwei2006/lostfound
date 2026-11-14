@@ -329,6 +329,33 @@ nginx -t && systemctl reload nginx
 - **小程序 1.4.1 上传状态**：`cli.bat upload --project <dist/build/mp-weixin> -v 1.4.1 -d "建站申请与背书配套构建（小程序无功能改动）"` 因 `IDE service port disabled` 失败；未伪造 `.ide-status` 或 `.ide` 端口文件。本轮小程序源码与线上 1.4.0 功能一致，无强制发布要求；如需重新上传，人工打开微信开发者工具 → 设置 → 安全设置 → 开启服务端口，再执行上传命令，最后到微信公众平台 → 版本管理提交审核。
 - **权限与状态口径**：申请状态 `PENDING / APPROVED / REJECTED`；背书文案由站点自行维护，不代表平台认证。角色与页面矩阵见主 README「招领站管理」。
 - **凭据与清理**：本次部署口令由临时运维目录中的既有凭据注入进程环境变量，未进入命令行、未写入仓库、未回显；运维脚本位于 `C:/Users/John/AppData/Local/Temp/dbtool/`，不入库；仓库内未新增明文凭据。
+
+## 小程序站点管理员身份切换与日常管理上线记录（2026-11-15）
+
+**状态**：**已上线**。按「部署前基线 → 本地构建/单测 → 小程序上传 → `backend` 单阶段部署 → HTTP/浏览器回归」完成。本轮 **Web 端零代码改动、无 DDL、无数据库快照、JWT 未轮换**；口令由用户再次提供后以字符码注入进程环境变量，未落盘、未回显、未进仓库。设计说明见根目录 `README.md` 的「小程序站点管理员工作视图」。
+
+- **需求与澄清**：站点管理员可切换普通用户/站点管理员、多站点可切换当前招领站、管理员身份下所有页面顶部常驻站点名；首页变站点工作台、发布变本站代发布、通知与我的保留、**底部导航 4 项不变**，切回普通用户完整恢复原功能；新增接收转交物品、物品上下架与代发布、认领审批、现场登记归还及各自查询；「附近招领站」与转交选站按距离升序并显示距离。
+- **本地验证**：后端 `mvn package` **9 个测试类 61 例全绿**（新增 `ItemStatusPermissionTest` 8 例覆盖本人物品 / 本站他人转交物品 / 其它站物品 / 普通用户 / ADMIN / 非法状态 / 缓存失效）；jar `lostfound-server-1.0.0.jar`（30759056 字节）；IDE 诊断 0。小程序双源码 **42 文件 SHA256 差异 0**（排除根级 `project*.json`），`scripts/sync-category-dict.mjs --check` 通过（version=2，12 类，未触碰 `CATEGORY_DICT_BEGIN/END` 区间）；Node v22.23.1 下 `npm run build:mp-weixin` 通过，`app.json` **23 页**（新增 4 个管理页），**23/23 页注册 `site-context-bar`**，定位说明 17 字（上限 30）；`dist/build/mp-weixin` → `dist/dev/mp-weixin` 强同步 **BUILD_FILES=131 / DEV_DIFF=0 / PRIVATE_KEPT=True**。
+- **距离模块边界**：`utils/distance.js` 纯本地 Haversine 验证 **18/18 通过**。过程中发现并修复 `Number(null) === 0` 会把缺失纬度误判为合法坐标的问题（`validPoint` 显式排除 `null` / `undefined` / 空串），回归脚本中的同口径实现同步修正；修复后重新同步双源码、重建并强同步产物。验证覆盖同点距离、纬度差、无效坐标、近者在前、无坐标稳定排末尾、定位不可用降级为原序、米/公里格式化。
+- **小程序上传**：**1.8.0 上传成功**（`cli.bat upload --project <dist/build/mp-weixin> -v 1.8.0`，318.0 KB / 325617 字节），历史多次 `IDE service port disabled` 阻塞本轮已解除，IDE 服务端口 `127.0.0.1:35120` 正常；使用 AppID `wxb45bbe07cf07250c`。目前仍是**开发版本**，需人工到微信公众平台提交审核并发布。
+- **后端单点改动**：`ItemService.changeShelfStatus()` 独立成方法，只接受 `WAITING` / `OFFLINE` 白名单，在 `checkOwner` 之外允许「物品 `site_id` 非空且 `sitePermission.canManage(siteId)`」操作转交入库物品（发布者是他人时原逻辑会 403）；`Lost` 无 `site_id`，站点管理员不能跨类型操作失物。保留 `ClaimService.review()` 内部 `changeStatus(..., "FINISHED")` 的原语义。`FoundController` / `LostController` 的 `/status` 端点改调新方法。**不改任何接口入参与返回结构、不改 `/api/foundsite/page` 契约、不给 `SiteVO` 加字段**（距离在前端算，21 个站点 `size:50` 一次取全量）。
+- **部署**：仅 `node deploy/remote-deploy.js backend`（未用 `all`、未重发 Web）。脚本先备份旧 jar 再上传，`systemctl daemon-reload && systemctl enable lostfound && systemctl restart lostfound` 重载新 jar，并回读 `/etc/lostfound/lostfound.env` 沿用既有 DB/WX/JWT 配置。结果：`health=200`、`systemctl is-active lostfound=active`、API sample 正常（`foundsite/page total=21`）。远端 jar SHA256 单独核验因审批超时未执行，以部署脚本健康输出与线上回归为准。
+- **部署前基线**：`dbtool/site-admin-baseline.js before`（2026-11-14T16:12:42Z，5 次采样）与 `verify-site-admin-online.js` **29 PASS / 0 FAIL**、`verify-site-admin-browser.js before` **40 PASS / 0 FAIL**（7 组页面 FCP 全 `good`）。
+- **部署后回归**：`site-admin-baseline.js after`（2026-11-14T22:06:20Z）+ `verify-site-admin-online.js` 纯只读 **39 PASS / 0 FAIL**，`verify-site-admin-browser.js after` **40 PASS / 0 FAIL**。
+
+  | 接口 | before p50 | after p50 | 变化 |
+  |------|-----------:|----------:|-----:|
+  | `health` | 84 | 83 | -1 ms |
+  | `foundsite.page` | 82 | 84 | +2 ms |
+  | `found.page` | 84 | 84 | 0 |
+  | `lost.page` | 85 | 85 | 0 |
+  | `found.latest` | 86 | 84 | -2 ms |
+
+  本轮只改权限判定、不改查询链路，耗时持平符合预期。契约：公开接口字段 keys 前后一致，分页 `total` 188 / 242 / 14 未变，排序不改变 total，关键词搜索仍有命中，站点 **21 个、id 集合未变**，19 个站点含可用坐标、2 个无坐标（前端排末尾），距离升序结果单调不减；6 个管理类接口未登录均返回 `code=401` 不泄漏数据；Web 页面标题、分页总数、后台未登录重定向 `/login?redirect=/admin/dashboard` 均正常。浏览器 FCP：1537 / 116 / 221 / 77 / 125 / 120 / 231 ms，全部 `good`。
+- **一次操作失误与恢复**：预热阶段误执行 `site-admin-baseline.js before`，把部署前基线覆盖成部署后数据；已依据本轮读取过的原始内容**精确恢复** `site-admin-baseline-before.json`（时间戳、各接口摘要、21 条站点快照全部还原），随后在服务预热后重新采集 `after`。前后基线时间戳分离正确，对比数据可用。
+- **运维脚本**：本轮新增 `C:/Users/John/AppData/Local/Temp/dbtool/site-admin-baseline.js`、`verify-site-admin-online.js`、`verify-site-admin-browser.js` 及 `site-admin-baseline-{before,after}.json`、`site-admin-browser-report-{before,after}.json`、`site-admin-browser-shots-{before,after}/*.png`，均为只读、可复核；上一轮 `perf-*` 脚本与报告未改动、未覆盖。
+- **清理与状态**：`git diff --check` 通过、暂存区为空、HEAD 未变、未提交，仓库内无明文口令（仅 `<服务器 SSH 口令>` 等占位符与变量拼接），用户既有未提交改动保持原状。
+- **仍待人工**：微信公众平台 → 版本管理 → 对 1.8.0 提交审核并发布（后端已就绪）；`manifest.json` 未声明 `__usePrivacyCheck__`（微信隐私强审项，需评估是否补充）；首次使用建议用真实站点管理员账号在小程序内验证身份切换、站点切换、四类管理操作与距离排序真机定位；新超管首次登录后修改默认口令。
 - **仍待人工处理**：微信开发者工具服务端口与小程序版本审核；默认管理员口令轮换；`deploy/remote-deploy.js` 勘察段中历史遗留的示例数据库口令建议改为从环境变量读取。临时运维目录 `dbtool/verify-web-online.js` 内保存有历史明文连接口令，本轮部署复用了该凭据，建议清理脚本中的明文并轮换口令。
 
 ## 小程序转交与匹配优化上线记录（2026-11-10）

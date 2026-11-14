@@ -1,5 +1,6 @@
 <template>
   <view class="mine">
+    <site-context-bar />
     <!-- 用户卡片：点击头像或资料区进入编辑弹层 -->
     <view class="user-card lf-card" v-if="user">
       <view class="avatar" @tap="openProfile">{{ (user.nickname || 'U').charAt(0) }}</view>
@@ -12,6 +13,18 @@
     </view>
     <view class="lf-card" v-else @tap="goLogin">
       <text style="font-size: 30rpx; color: #2563eb; font-weight: 600">点击登录 / 注册</text>
+    </view>
+
+    <!-- 身份切换：仅站点管理员可见，切换后底部导航 4 项不变，首页/发布内容随身份变化 -->
+    <view v-if="isSiteManager" class="identity-card lf-card">
+      <view class="identity-main">
+        <text class="identity-label">当前身份</text>
+        <text class="identity-value">{{ managerView ? '站点管理员' : '普通用户' }}</text>
+        <text class="identity-hint">{{ managerView ? '管理当前站点物品与待办' : '浏览全站失物招领信息' }}</text>
+      </view>
+      <button class="identity-btn" :class="{ 'identity-btn--busy': switching }" :disabled="switching" @tap="toggleIdentity">
+        {{ switching ? '切换中…' : (managerView ? '切回普通用户' : '切换为站点管理员') }}
+      </button>
     </view>
 
     <!-- 功能入口 -->
@@ -101,11 +114,14 @@ import { computed, reactive, ref } from 'vue'
 import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import { authApi } from '@/utils/api'
 import siteStore from '@/utils/site-store'
+import { viewMode, syncViewMode, setViewMode, resetViewMode, isManagerView } from '@/utils/view-mode'
 
 const user = ref(null)
 const showProfile = ref(false)
 const saving = ref(false)
+const switching = ref(false)
 const profileForm = reactive({ nickname: '', contact: '' })
+const managerView = computed(() => viewMode.value === 'manager')
 
 const meInfo = ref(null)
 let meLoadedAt = 0
@@ -116,6 +132,7 @@ const go = (url) => uni.navigateTo({ url })
 
 onShow(async () => {
   user.value = uni.getStorageSync('lf_user') || null
+  syncViewMode()
   if (!user.value) {
     meInfo.value = null
     siteStore.reset()
@@ -142,6 +159,7 @@ const logout = () => {
       if (!res.confirm) return
       uni.removeStorageSync('lf_token')
       uni.removeStorageSync('lf_user')
+      resetViewMode()
       siteStore.reset()
       meInfo.value = null
       user.value = null
@@ -175,6 +193,32 @@ const saveProfile = async () => {
     console.error(e)
   } finally {
     saving.value = false
+  }
+}
+
+const toggleIdentity = async () => {
+  if (switching.value) return
+  switching.value = true
+  try {
+    if (isManagerView()) {
+      setViewMode('personal')
+      uni.showToast({ title: '已切回普通用户', icon: 'none' })
+    } else {
+      // 先确认确实有可管理站点，避免进入无站点的空工作台
+      const sites = await siteStore.load(true)
+      if (!sites || !sites.length) {
+        return uni.showToast({ title: '暂无可管理招领站', icon: 'none' })
+      }
+      setViewMode('manager')
+      uni.showToast({ title: '已进入站点管理员', icon: 'none' })
+    }
+    // 底部导航 4 项不变；回首页让工作台 / 原首页按新身份重新渲染
+    setTimeout(() => uni.switchTab({ url: '/pages/home/home' }), 350)
+  } catch (e) {
+    console.warn('[mine] 身份切换失败', e)
+    uni.showToast({ title: '切换失败，请重试', icon: 'none' })
+  } finally {
+    switching.value = false
   }
 }
 
@@ -281,4 +325,27 @@ const goSites = () => uni.navigateTo({ url: '/pages/sites/sites' })
 .sheet-submit--busy {
   opacity: 0.6;
 }
+.identity-card {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%);
+  border: 2rpx solid #dbeafe;
+}
+.identity-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6rpx; }
+.identity-label { color: #94a3b8; font-size: 22rpx; letter-spacing: 2rpx; }
+.identity-value { color: #1e3a8a; font-size: 30rpx; font-weight: 700; }
+.identity-hint { color: #64748b; font-size: 23rpx; }
+.identity-btn {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 14rpx 24rpx;
+  font-size: 24rpx;
+  line-height: 1.4;
+  color: #fff;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  border-radius: 999rpx;
+}
+.identity-btn::after { border: none; }
+.identity-btn--busy { opacity: .6; }
 </style>

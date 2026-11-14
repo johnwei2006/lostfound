@@ -18,7 +18,11 @@
     { "path": "pages/manage/manager-detail", "style": { "navigationBarTitleText": "管理员详情" } },
     { "path": "pages/manage/invite", "style": { "navigationBarTitleText": "邀请共同管理员" } },
     { "path": "pages/manage/invite-accept", "style": { "navigationBarTitleText": "加入招领站" } },
-    { "path": "pages/manage/transfer", "style": { "navigationBarTitleText": "转让主管理员" } }
+    { "path": "pages/manage/transfer", "style": { "navigationBarTitleText": "转让主管理员" } },
+    { "path": "pages/manage/items", "style": { "navigationBarTitleText": "站点物品管理" } },
+    { "path": "pages/manage/transfers", "style": { "navigationBarTitleText": "接收转交物品" } },
+    { "path": "pages/manage/claims", "style": { "navigationBarTitleText": "认领申请审批" } },
+    { "path": "pages/manage/returns", "style": { "navigationBarTitleText": "现场登记归还" } }
   ],
   "globalStyle": {
     "navigationBarBackgroundColor": "#2563EB",

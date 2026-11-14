@@ -1,5 +1,6 @@
 <template>
   <view class="managers">
+    <site-context-bar />
     <site-switcher
       :site="site"
       :sites="sites"

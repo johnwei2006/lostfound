@@ -1,5 +1,7 @@
 <template>
-  <view class="detail" v-if="item">
+  <view class="detail">
+    <site-context-bar />
+    <block v-if="item">
     <!-- 图片轮播 -->
     <swiper v-if="item.images && item.images.length" class="swiper" circular indicator-dots>
       <swiper-item v-for="img in item.images" :key="img">
@@ -118,6 +120,7 @@
         <button class="lf-btn" style="margin-top: 24rpx" @tap="submitClaim">提交申请</button>
       </view>
     </view>
+    </block>
 
   </view>
 </template>

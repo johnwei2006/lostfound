@@ -1,5 +1,6 @@
 <template>
   <view class="web-login">
+    <site-context-bar />
     <view class="web-login__card lf-card">
       <view class="web-login__icon"><text class="web-login__icon-text">寻</text></view>
       <text class="web-login__title">确认登录网页版</text>

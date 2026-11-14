@@ -1,7 +1,13 @@
 <template>
   <view class="publish">
+    <site-context-bar />
+    <!-- 管理员身份：本站代发布 -->
+    <view v-if="managerView" class="site-publish-tip">
+      <text class="site-publish-tip__title">本站代发布</text>
+      <text class="site-publish-tip__desc">物品将直接登记到「{{ siteName || '当前招领站' }}」，无需转交审批</text>
+    </view>
     <!-- 类型切换 -->
-    <view class="type-switch">
+    <view v-if="!managerView" class="type-switch">
       <view class="ts-item" :class="{ active: type === 'lost', danger: type === 'lost' }" @tap="type = 'lost'">
         我丢了东西
       </view>
@@ -73,17 +79,22 @@
     </view>
 
     <button class="lf-btn lf-btn--accent" :loading="submitting" @tap="submit">
-      发布{{ type === 'found' ? '招领' : '寻物' }}启事
+      {{ managerView ? '登记到本站' : `发布${type === 'found' ? '招领' : '寻物'}启事` }}
     </button>
   </view>
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { itemApi, CATEGORIES } from '@/utils/api'
+import { itemApi, siteApi, CATEGORIES } from '@/utils/api'
 import { uploadFile } from '@/utils/request'
 import { ensurePrivacyAuthorize, ensureLocation, getCurrentLocation } from '@/utils/location'
+import siteStore from '@/utils/site-store'
+import { viewMode, syncViewMode } from '@/utils/view-mode'
+
+const managerView = computed(() => viewMode.value === 'manager')
+const siteName = computed(() => siteStore.currentSiteName)
 
 const type = ref('lost')
 const categories = CATEGORIES
@@ -132,10 +143,15 @@ const fillDefaults = () => {
 }
 
 onShow(() => {
+  syncViewMode()
   if (!uni.getStorageSync('lf_token')) {
     uni.showToast({ title: '请先登录', icon: 'none' })
     setTimeout(() => uni.navigateTo({ url: '/pages/login/login' }), 600)
     return
+  }
+  if (managerView.value) {
+    siteStore.ensureLoaded()
+    type.value = 'found'
   }
   fillDefaults()
   // 启动定位可能尚未完成，异步成功后补齐坐标（复用同一次启动的定位 Promise）
@@ -223,9 +239,15 @@ const useCurrentLocation = async () => {
 const submit = async () => {
   if (!form.title.trim()) return uni.showToast({ title: '请填写物品名称', icon: 'none' })
   if (!form.category) return uni.showToast({ title: '请选择类别', icon: 'none' })
+  // 管理员身份固定登记到当前站点，走代发布接口（无需转交审批）
+  if (managerView.value) type.value = 'found'
+  const siteId = managerView.value ? siteStore.currentSiteId : null
+  if (managerView.value && !siteId) {
+    return uni.showToast({ title: '请先选择招领站', icon: 'none' })
+  }
   submitting.value = true
   try {
-    await itemApi.publish(type.value, {
+    const payload = {
       title: form.title,
       category: form.category,
       description: form.description,
@@ -235,8 +257,10 @@ const submit = async () => {
       latitude: form.latitude,
       itemTime: form.date ? form.date + ' 00:00:00' : null,
       contact: form.contact,
-    })
-    uni.showToast({ title: '发布成功', icon: 'success' })
+    }
+    if (managerView.value) await siteApi.publishItem(siteId, payload)
+    else await itemApi.publish(type.value, payload)
+    uni.showToast({ title: managerView.value ? '已登记到本站' : '发布成功', icon: 'success' })
     setTimeout(() => uni.switchTab({ url: '/pages/home/home' }), 900)
   } catch (e) {
     uni.showToast({ title: e.message, icon: 'none' })
@@ -247,6 +271,14 @@ const submit = async () => {
 </script>
 
 <style scoped>
+.site-publish-tip {
+  display: flex; flex-direction: column; gap: 6rpx;
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  border: 2rpx solid #bfdbfe; border-radius: 18rpx;
+  padding: 20rpx 24rpx; margin-bottom: 22rpx;
+}
+.site-publish-tip__title { color: #1d4ed8; font-size: 28rpx; font-weight: 700; }
+.site-publish-tip__desc { color: #64748b; font-size: 23rpx; }
 .publish {
   padding: 24rpx;
 }

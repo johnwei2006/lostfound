@@ -1,5 +1,6 @@
 <template>
   <view class="apply">
+    <site-context-bar />
     <!-- 提交结果态 -->
     <view v-if="done" class="done lf-card">
       <view class="done__icon">✓</view>

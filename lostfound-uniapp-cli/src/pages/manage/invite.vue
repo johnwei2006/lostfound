@@ -1,5 +1,6 @@
 <template>
   <view class="invite">
+    <site-context-bar />
     <view class="lf-card">
       <text class="lf-group-title">当前站点</text>
       <text class="site-name">{{ site ? site.name : '—' }}</text>

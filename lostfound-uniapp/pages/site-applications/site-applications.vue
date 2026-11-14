@@ -1,5 +1,6 @@
 <template>
   <view class="apps">
+    <site-context-bar />
     <view class="filters lf-card">
       <view
         v-for="f in filters"

@@ -1,5 +1,6 @@
 <template>
   <view class="list-page">
+    <site-context-bar />
     <!-- 我的发布 / 我的关注 / 匹配推荐 -->
     <template v-if="mode === 'match'">
       <view v-for="m in matches" :key="m.id" class="lf-card">
@@ -66,6 +67,7 @@
         <text class="lf-muted sheet-sub">
           将拾物「{{ transferItem ? transferItem.title : '' }}」申请转入招领站，由站点管理员审批通过后入库
         </text>
+        <text v-if="siteLocationAvailable" class="lf-muted sheet-distance">已按距离由近到远排序</text>
         <picker :range="siteNames" @change="onSiteChange">
           <view class="picker" :class="{ 'picker--active': siteIndex >= 0 }">
             {{ siteIndex >= 0 ? siteNames[siteIndex] : '选择招领站' }}
@@ -92,6 +94,8 @@ import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { itemApi, focusApi, matchApi, transferApi, siteApi } from '@/utils/api'
 import { createDedupeGuard } from '@/utils/request-cache'
+import { getCurrentLocation } from '@/utils/location'
+import { withDistance } from '@/utils/distance'
 
 const guard = createDedupeGuard(1200)
 const mode = ref('published')
@@ -149,8 +153,12 @@ const transferRemark = ref('')
 const sites = ref([])
 const siteIndex = ref(-1)
 const submitting = ref(false)
+const siteLocationAvailable = ref(false)
 const siteNames = computed(() =>
-  sites.value.map((s) => (s.address ? `${s.name}（${s.address}）` : s.name))
+  sites.value.map((s) => {
+    const base = s.address ? `${s.name}（${s.address}）` : s.name
+    return s.distanceText ? `${s.distanceText} · ${base}` : base
+  })
 )
 const selectedSiteId = computed(() => (siteIndex.value >= 0 ? sites.value[siteIndex.value].id : null))
 
@@ -161,8 +169,10 @@ const openTransfer = async (it) => {
   showTransfer.value = true
   if (!sites.value.length) {
     try {
+      const loc = getCurrentLocation()
+      siteLocationAvailable.value = !!(loc && loc.available !== false)
       const data = await siteApi.page({ page: 1, size: 50 })
-      sites.value = data.records || []
+      sites.value = withDistance(data.records || [], siteLocationAvailable.value ? loc : null)
     } catch (e) {
       console.error(e)
     }
@@ -313,6 +323,7 @@ onShow(() => guard.run('list:' + mode.value, load))
   margin-top: 10rpx;
   line-height: 1.6;
 }
+.sheet-distance { display: block; margin-top: 12rpx; font-size: 22rpx; color: #1d4ed8; }
 .picker {
   margin-top: 22rpx;
   border: 2rpx solid #e5e9f0;
